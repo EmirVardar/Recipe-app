@@ -1,0 +1,6 @@
+.DS_Store
+.idea/
+backend/.m2/
+backend/target/
+mobile/node_modules/
+mobile/.expo/
