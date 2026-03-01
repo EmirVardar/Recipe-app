@@ -19,3 +19,7 @@ spring:
 
 server:
   port: ${PORT:8080}
+
+jwt:
+  secret: ${JWT_SECRET:change-this-secret-key-change-this-secret-key}
+  exp-min: ${JWT_EXP_MIN:60}
