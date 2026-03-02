@@ -4,8 +4,6 @@ export type AuthResponse = {
   id: number;
   email: string;
   fullName: string;
-  heightCm: number;
-  weightKg: number;
   accessToken: string;
   message: string;
 };
@@ -14,8 +12,6 @@ export type RegisterRequest = {
   email: string;
   password: string;
   fullName: string;
-  heightCm: number;
-  weightKg: number;
 };
 
 export type LoginRequest = {
@@ -26,6 +22,36 @@ export type LoginRequest = {
 export type MeResponse = {
   authenticated: boolean;
   email: string;
+};
+
+export type OnboardingStatusResponse = {
+  profileCompleted: boolean;
+  medicalCompleted: boolean;
+  nutritionCompleted: boolean;
+  completed: boolean;
+};
+
+export type ProfileUpdateRequest = {
+  age: number;
+  sex: string;
+  heightCm: number;
+  weightKg: number;
+  activityLevel: string;
+  goal: string;
+};
+
+export type MedicalUpdateRequest = {
+  chronicConditions: string;
+  medications: string;
+  allergies: string;
+  intolerances: string;
+};
+
+export type NutritionUpdateRequest = {
+  dietType: string;
+  avoidFoods: string;
+  preferredFoods: string;
+  budgetLevel: string;
 };
 
 export function getApiBaseUrl(): string {
@@ -61,6 +87,45 @@ export async function getMe(accessToken: string): Promise<MeResponse> {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
+  });
+}
+
+export async function getOnboardingStatus(accessToken: string): Promise<OnboardingStatusResponse> {
+  return request<OnboardingStatusResponse>('/api/onboarding/status', {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+export async function updateProfile(accessToken: string, payload: ProfileUpdateRequest) {
+  return request('/api/me/profile', {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateMedical(accessToken: string, payload: MedicalUpdateRequest) {
+  return request('/api/me/medical', {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateNutrition(accessToken: string, payload: NutritionUpdateRequest) {
+  return request('/api/me/nutrition', {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
   });
 }
 

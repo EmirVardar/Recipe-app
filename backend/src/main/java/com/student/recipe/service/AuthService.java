@@ -46,8 +46,6 @@ public class AuthService {
         user.setEmail(email);
         user.setPasswordHash(passwordEncoder.encode(request.password().trim()));
         user.setFullName(request.fullName().trim());
-        user.setHeightCm(request.heightCm());
-        user.setWeightKg(request.weightKg());
 
         User savedUser = userRepository.save(user);
         String token = jwtService.generateToken(userDetailsService.loadUserByUsername(savedUser.getEmail()));
@@ -56,8 +54,6 @@ public class AuthService {
                 savedUser.getId(),
                 savedUser.getEmail(),
                 savedUser.getFullName(),
-                savedUser.getHeightCm(),
-                savedUser.getWeightKg(),
                 token,
                 "Registration successful");
     }
@@ -82,8 +78,6 @@ public class AuthService {
                 user.getId(),
                 user.getEmail(),
                 user.getFullName(),
-                user.getHeightCm(),
-                user.getWeightKg(),
                 token,
                 "Login successful");
     }
@@ -101,13 +95,6 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Full name is required");
         }
 
-        if (request.heightCm() == null || request.heightCm() <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Height must be greater than 0");
-        }
-
-        if (request.weightKg() == null || request.weightKg() <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Weight must be greater than 0");
-        }
     }
 
     private String normalizeEmail(String email) {

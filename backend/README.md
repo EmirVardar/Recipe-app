@@ -19,6 +19,16 @@ Bu dosya, her yeni ozellik eklendiginde guncellenecek referans notudur.
   - `/api/auth/register`
   - `/api/auth/login`
   - Gelen DTO'lari service katmanina aktarir.
+- `HealthController`
+  - `/api/ping` (public)
+- `UserController`
+  - `/api/me` (protected)
+- `UserHealthController`
+  - `/api/onboarding/status`
+  - `/api/me/profile`
+  - `/api/me/medical`
+  - `/api/me/nutrition`
+  - Giris yapan kullanicinin onboarding verilerini yonetir.
 
 ### `service`
 - `AuthService`
@@ -27,22 +37,42 @@ Bu dosya, her yeni ozellik eklendiginde guncellenecek referans notudur.
 - `CustomUserDetailsService`
   - DB'deki user'i Spring Security `UserDetails` formatina cevirir.
   - JWT dogrulama akisi bunu kullanir.
+- `UserHealthService`
+  - Onboarding status hesaplama.
+  - Profile/medical/nutrition kayitlarini upsert etme.
 
 ### `repository`
 - `UserRepository`
   - `existsByEmail`
   - `findByEmail`
   - User tablosuna erisim burada.
+- `UserProfileRepository`
+  - `findByUserId`
+- `UserMedicalRepository`
+  - `findByUserId`
+- `UserNutritionPreferenceRepository`
+  - `findByUserId`
 
 ### `entity`
 - `User`
   - Kullanici tablosu modeli.
-  - Alanlar: email, passwordHash, fullName, heightCm, weightKg, createdAt, updatedAt.
+  - Alanlar: email, passwordHash, fullName, createdAt, updatedAt.
+  - Iliskiler: `UserProfile`, `UserMedical`, `UserNutritionPreference` (1-1).
+- `UserProfile`
+  - Temel profil bilgileri: age, sex, heightCm, weightKg, activityLevel, goal.
+- `UserMedical`
+  - Klinik bilgiler: chronicConditions, medications, allergies, intolerances.
+- `UserNutritionPreference`
+  - Beslenme tercihleri: dietType, avoidFoods, preferredFoods, budgetLevel.
 
 ### `dto`
-- `RegisterRequestDto`: kayit body
+- `RegisterRequestDto`: kayit body (email, password, fullName)
 - `LoginRequestDto`: giris body
-- `AuthResponseDto`: register/login response (token dahil)
+- `AuthResponseDto`: register/login response (id, email, fullName, accessToken, message)
+- `ProfileUpdateRequestDto` / `ProfileResponseDto`
+- `MedicalUpdateRequestDto` / `MedicalResponseDto`
+- `NutritionPreferenceUpdateRequestDto` / `NutritionPreferenceResponseDto`
+- `OnboardingStatusResponseDto`
 
 ### `security`
 - `JwtService`
@@ -57,19 +87,13 @@ Bu dosya, her yeni ozellik eklendiginde guncellenecek referans notudur.
   - Diger endpointler token ister
   - Password encoder (`BCryptPasswordEncoder`) bean
 
-### `api`
-- `HealthController`
-  - `GET /api/ping` (public)
-- `UserController`
-  - `GET /api/me` (protected)
-
 ## Auth Akisi
 
 ### Register
 1. `POST /api/auth/register`
 2. Email unique kontrolu
 3. Password hash (`BCrypt`)
-4. User save
+4. `User` save (sadece kimlik/auth alanlari)
 5. JWT token uretilir
 6. `AuthResponseDto` doner
 
@@ -93,6 +117,10 @@ Bu dosya, her yeni ozellik eklendiginde guncellenecek referans notudur.
 - Login/registration response icindeki `accessToken` alin
 - `GET /api/me` isteginde header ekle:
   - `Authorization: Bearer <accessToken>`
+- `GET /api/onboarding/status` isteginde ayni headeri kullan
+- `PUT /api/me/profile` ile temel profil gir
+- `PUT /api/me/medical` ile medikal bilgiler gir
+- `PUT /api/me/nutrition` ile beslenme tercihlerini gir
 
 Beklenen:
 - token yoksa `/api/me` -> `401`

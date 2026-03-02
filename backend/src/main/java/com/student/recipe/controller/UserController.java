@@ -1,4 +1,4 @@
-package com.student.recipe.api;
+package com.student.recipe.controller;
 
 import java.util.Map;
 

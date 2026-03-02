@@ -3,10 +3,13 @@ package com.student.recipe.entity;
 import java.time.Instant;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -34,11 +37,14 @@ public class User {
     @Column(nullable = false, length = 120)
     private String fullName;
 
-    @Column(nullable = false)
-    private Double heightCm;
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private UserProfile profile;
 
-    @Column(nullable = false)
-    private Double weightKg;
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private UserMedical medical;
+
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private UserNutritionPreference nutritionPreference;
 
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
