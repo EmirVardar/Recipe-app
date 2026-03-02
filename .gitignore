@@ -4,3 +4,5 @@ backend/.m2/
 backend/target/
 mobile/node_modules/
 mobile/.expo/
+.env
+.env.local

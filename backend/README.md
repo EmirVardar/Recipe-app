@@ -29,6 +29,9 @@ Bu dosya, her yeni ozellik eklendiginde guncellenecek referans notudur.
   - `/api/me/medical`
   - `/api/me/nutrition`
   - Giris yapan kullanicinin onboarding verilerini yonetir.
+- `AssistantController`
+  - `/api/assistant/chat` (protected)
+  - Chat mesaji alip OpenAI entegrasyonu uzerinden yanit doner.
 
 ### `service`
 - `AuthService`
@@ -40,6 +43,12 @@ Bu dosya, her yeni ozellik eklendiginde guncellenecek referans notudur.
 - `UserHealthService`
   - Onboarding status hesaplama.
   - Profile/medical/nutrition kayitlarini upsert etme.
+- `OpenAiService` (`service/assistant`)
+  - OpenAI entegrasyonu icin tek servis giris noktasi.
+  - Prompt alip `OpenAiClient` uzerinden modele gonderir.
+- `AssistantChatService` (`service/assistant`)
+  - Chat endpoint is kurallarini yonetir.
+  - Basit sistem prompt + kullanici mesaji ile OpenAI cevabini doner.
 
 ### `repository`
 - `UserRepository`
@@ -73,6 +82,7 @@ Bu dosya, her yeni ozellik eklendiginde guncellenecek referans notudur.
 - `MedicalUpdateRequestDto` / `MedicalResponseDto`
 - `NutritionPreferenceUpdateRequestDto` / `NutritionPreferenceResponseDto`
 - `OnboardingStatusResponseDto`
+- `AssistantChatRequestDto` / `AssistantChatResponseDto`
 
 ### `security`
 - `JwtService`
@@ -86,6 +96,11 @@ Bu dosya, her yeni ozellik eklendiginde guncellenecek referans notudur.
   - `/api/auth/**` ve `/api/ping` acik
   - Diger endpointler token ister
   - Password encoder (`BCryptPasswordEncoder`) bean
+
+### `integration/openai`
+- `OpenAiClient`
+  - `https://api.openai.com/v1/chat/completions` cagrisi burada yapilir.
+  - Backend'den OpenAI'ye cikan tum HTTP cagrilarinin tek noktasi.
 
 ## Auth Akisi
 
@@ -121,6 +136,8 @@ Bu dosya, her yeni ozellik eklendiginde guncellenecek referans notudur.
 - `PUT /api/me/profile` ile temel profil gir
 - `PUT /api/me/medical` ile medikal bilgiler gir
 - `PUT /api/me/nutrition` ile beslenme tercihlerini gir
+- `POST /api/assistant/chat` ile chat testi yap:
+  - body: `{ \"message\": \"Diyabet için kahvalti onerisi ver\" }`
 
 Beklenen:
 - token yoksa `/api/me` -> `401`

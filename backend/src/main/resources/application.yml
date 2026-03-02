@@ -1,4 +1,7 @@
 spring:
+  config:
+    import: optional:file:.env[.properties],optional:file:../.env[.properties]
+
   application:
     name: recipe
 
@@ -23,3 +26,7 @@ server:
 jwt:
   secret: ${JWT_SECRET:change-this-secret-key-change-this-secret-key}
   exp-min: ${JWT_EXP_MIN:60}
+
+openai:
+  api-key: ${OPENAI_API_KEY:}
+  chat-model: ${OPENAI_CHAT_MODEL:gpt-4o-mini}
