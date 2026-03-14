@@ -15,6 +15,11 @@ import com.student.recipe.entity.User;
 import com.student.recipe.entity.UserMedical;
 import com.student.recipe.entity.UserNutritionPreference;
 import com.student.recipe.entity.UserProfile;
+import com.student.recipe.entity.enums.ActivityLevel;
+import com.student.recipe.entity.enums.BudgetLevel;
+import com.student.recipe.entity.enums.DietType;
+import com.student.recipe.entity.enums.GoalType;
+import com.student.recipe.entity.enums.SexType;
 import com.student.recipe.repository.UserMedicalRepository;
 import com.student.recipe.repository.UserNutritionPreferenceRepository;
 import com.student.recipe.repository.UserProfileRepository;
@@ -63,18 +68,63 @@ public class UserHealthService {
         );
     }
 
+    public ProfileResponseDto getProfile(String email) {
+        User user = getUserByEmail(email);
+
+        return userProfileRepository.findByUserId(user.getId())
+                .map(profile -> new ProfileResponseDto(
+                        profile.getAge(),
+                        profile.getSex(),
+                        profile.getHeightCm(),
+                        profile.getWeightKg(),
+                        profile.getActivityLevel(),
+                        profile.getGoal()
+                ))
+                .orElse(new ProfileResponseDto(null, null, null, null, null, null));
+    }
+
+    public MedicalResponseDto getMedical(String email) {
+        User user = getUserByEmail(email);
+
+        return userMedicalRepository.findByUserId(user.getId())
+                .map(medical -> new MedicalResponseDto(
+                        medical.getChronicConditions(),
+                        medical.getMedications(),
+                        medical.getAllergies(),
+                        medical.getIntolerances()
+                ))
+                .orElse(new MedicalResponseDto(null, null, null, null));
+    }
+
+    public NutritionPreferenceResponseDto getNutrition(String email) {
+        User user = getUserByEmail(email);
+
+        return userNutritionPreferenceRepository.findByUserId(user.getId())
+                .map(nutrition -> new NutritionPreferenceResponseDto(
+                        nutrition.getDietType(),
+                        nutrition.getAvoidFoods(),
+                        nutrition.getPreferredFoods(),
+                        nutrition.getBudgetLevel()
+                ))
+                .orElse(new NutritionPreferenceResponseDto(null, null, null, null));
+    }
+
     public ProfileResponseDto upsertProfile(String email, ProfileUpdateRequestDto request) {
         User user = getUserByEmail(email);
         validateProfileRequest(request);
 
+        SexType sex = parseRequiredEnum(request.sex(), SexType.class, "sex");
+        ActivityLevel activityLevel = parseRequiredEnum(request.activityLevel(), ActivityLevel.class, "activityLevel");
+        GoalType goal = parseRequiredEnum(request.goal(), GoalType.class, "goal");
+
         UserProfile profile = userProfileRepository.findByUserId(user.getId()).orElseGet(UserProfile::new);
         profile.setUser(user);
         profile.setAge(request.age());
-        profile.setSex(normalizeNullable(request.sex()));
+        profile.setSex(sex.name());
         profile.setHeightCm(request.heightCm());
         profile.setWeightKg(request.weightKg());
-        profile.setActivityLevel(normalizeNullable(request.activityLevel()));
-        profile.setGoal(normalizeNullable(request.goal()));
+        profile.setActivityLevel(activityLevel.name());
+        profile.setGoal(goal.name());
 
         UserProfile saved = userProfileRepository.save(profile);
         user.setProfile(saved);
@@ -115,13 +165,16 @@ public class UserHealthService {
         User user = getUserByEmail(email);
         validateNutritionRequest(request);
 
+        DietType dietType = parseRequiredEnum(request.dietType(), DietType.class, "dietType");
+        BudgetLevel budgetLevel = parseRequiredEnum(request.budgetLevel(), BudgetLevel.class, "budgetLevel");
+
         UserNutritionPreference nutrition = userNutritionPreferenceRepository.findByUserId(user.getId())
                 .orElseGet(UserNutritionPreference::new);
         nutrition.setUser(user);
-        nutrition.setDietType(normalizeNullable(request.dietType()));
+        nutrition.setDietType(dietType.name());
         nutrition.setAvoidFoods(normalizeNullable(request.avoidFoods()));
         nutrition.setPreferredFoods(normalizeNullable(request.preferredFoods()));
-        nutrition.setBudgetLevel(normalizeNullable(request.budgetLevel()));
+        nutrition.setBudgetLevel(budgetLevel.name());
 
         UserNutritionPreference saved = userNutritionPreferenceRepository.save(nutrition);
         user.setNutritionPreference(saved);
@@ -146,6 +199,9 @@ public class UserHealthService {
         if (isBlank(request.sex())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sex is required");
         }
+        if (isBlank(request.activityLevel())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Activity level is required");
+        }
         if (request.heightCm() == null || request.heightCm() <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Height must be greater than 0");
         }
@@ -168,6 +224,9 @@ public class UserHealthService {
         if (isBlank(request.dietType())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "dietType is required");
         }
+        if (isBlank(request.budgetLevel())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "budgetLevel is required");
+        }
     }
 
     private boolean isProfileComplete(UserProfile profile) {
@@ -177,6 +236,7 @@ public class UserHealthService {
                 && profile.getHeightCm() > 0
                 && profile.getWeightKg() != null
                 && profile.getWeightKg() > 0
+                && !isBlank(profile.getActivityLevel())
                 && !isBlank(profile.getGoal());
     }
 
@@ -185,7 +245,39 @@ public class UserHealthService {
     }
 
     private boolean isNutritionComplete(UserNutritionPreference nutritionPreference) {
-        return !isBlank(nutritionPreference.getDietType());
+        return !isBlank(nutritionPreference.getDietType()) && !isBlank(nutritionPreference.getBudgetLevel());
+    }
+
+    private <T extends Enum<T>> T parseRequiredEnum(String raw, Class<T> enumClass, String fieldName) {
+        if (isBlank(raw)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, fieldName + " is required");
+        }
+
+        String normalized = normalizeEnumToken(raw);
+        try {
+            return Enum.valueOf(enumClass, normalized);
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, fieldName + " has invalid value: " + raw);
+        }
+    }
+
+    private String normalizeEnumToken(String raw) {
+        String normalized = raw.trim()
+                .replace('ı', 'i')
+                .replace('İ', 'I')
+                .replace('ş', 's')
+                .replace('Ş', 'S')
+                .replace('ğ', 'g')
+                .replace('Ğ', 'G')
+                .replace('ü', 'u')
+                .replace('Ü', 'U')
+                .replace('ö', 'o')
+                .replace('Ö', 'O')
+                .replace('ç', 'c')
+                .replace('Ç', 'C')
+                .replace('-', '_')
+                .replace(' ', '_');
+        return normalized.toUpperCase();
     }
 
     private String normalizeNullable(String value) {

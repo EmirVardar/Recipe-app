@@ -32,6 +32,21 @@ public class UserHealthController {
         return ResponseEntity.ok(userHealthService.getOnboardingStatus(authentication.getName()));
     }
 
+    @GetMapping("/me/profile")
+    public ResponseEntity<ProfileResponseDto> profile(Authentication authentication) {
+        return ResponseEntity.ok(userHealthService.getProfile(authentication.getName()));
+    }
+
+    @GetMapping("/me/medical")
+    public ResponseEntity<MedicalResponseDto> medical(Authentication authentication) {
+        return ResponseEntity.ok(userHealthService.getMedical(authentication.getName()));
+    }
+
+    @GetMapping("/me/nutrition")
+    public ResponseEntity<NutritionPreferenceResponseDto> nutrition(Authentication authentication) {
+        return ResponseEntity.ok(userHealthService.getNutrition(authentication.getName()));
+    }
+
     @PutMapping("/me/profile")
     public ResponseEntity<ProfileResponseDto> upsertProfile(
             Authentication authentication,
