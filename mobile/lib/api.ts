@@ -39,6 +39,14 @@ export type ProfileUpdateRequest = {
   activityLevel: string;
   goal: string;
 };
+export type ProfileResponse = {
+  age: number | null;
+  sex: string | null;
+  heightCm: number | null;
+  weightKg: number | null;
+  activityLevel: string | null;
+  goal: string | null;
+};
 
 export type MedicalUpdateRequest = {
   chronicConditions: string;
@@ -46,12 +54,24 @@ export type MedicalUpdateRequest = {
   allergies: string;
   intolerances: string;
 };
+export type MedicalResponse = {
+  chronicConditions: string | null;
+  medications: string | null;
+  allergies: string | null;
+  intolerances: string | null;
+};
 
 export type NutritionUpdateRequest = {
   dietType: string;
   avoidFoods: string;
   preferredFoods: string;
   budgetLevel: string;
+};
+export type NutritionResponse = {
+  dietType: string | null;
+  avoidFoods: string | null;
+  preferredFoods: string | null;
+  budgetLevel: string | null;
 };
 
 export function getApiBaseUrl(): string {
@@ -109,6 +129,15 @@ export async function updateProfile(accessToken: string, payload: ProfileUpdateR
   });
 }
 
+export async function getProfile(accessToken: string): Promise<ProfileResponse> {
+  return request<ProfileResponse>('/api/me/profile', {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
 export async function updateMedical(accessToken: string, payload: MedicalUpdateRequest) {
   return request('/api/me/medical', {
     method: 'PUT',
@@ -116,6 +145,15 @@ export async function updateMedical(accessToken: string, payload: MedicalUpdateR
       Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify(payload),
+  });
+}
+
+export async function getMedical(accessToken: string): Promise<MedicalResponse> {
+  return request<MedicalResponse>('/api/me/medical', {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
   });
 }
 
@@ -129,6 +167,15 @@ export async function updateNutrition(accessToken: string, payload: NutritionUpd
   });
 }
 
+export async function getNutrition(accessToken: string): Promise<NutritionResponse> {
+  return request<NutritionResponse>('/api/me/nutrition', {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
 async function request<T>(path: string, init: RequestInit): Promise<T> {
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...init,
@@ -139,7 +186,7 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    let errorMessage = `Request failed with ${response.status}`;
+    let errorMessage = `Istek ${response.status} kodu ile basarisiz oldu`;
 
     try {
       const errorData = (await response.json()) as { message?: string; error?: string; detail?: string };
