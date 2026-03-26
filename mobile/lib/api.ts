@@ -255,6 +255,17 @@ export async function getRecipes(accessToken: string): Promise<RecipeListItemRes
   });
 }
 
+export async function searchRecipes(accessToken: string, query: string): Promise<RecipeListItemResponse[]> {
+  const params = new URLSearchParams({ q: query });
+
+  return request<RecipeListItemResponse[]>(`/api/recipes?${params.toString()}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
 export async function getRecipeDetail(accessToken: string, recipeId: number): Promise<RecipeDetailResponse> {
   return request<RecipeDetailResponse>(`/api/recipes/${recipeId}`, {
     method: 'GET',

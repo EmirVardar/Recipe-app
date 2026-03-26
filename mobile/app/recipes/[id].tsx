@@ -109,8 +109,8 @@ export default function RecipeDetailScreen() {
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Icindekiler</Text>
-              {recipe.ingredients.map((ingredient) => (
-                <Text key={`${recipe.id}-${ingredient.ingredientId}`} style={styles.sectionItem}>
+              {recipe.ingredients.map((ingredient, index) => (
+                <Text key={`${recipe.id}-${ingredient.ingredientId}-${index}`} style={styles.sectionItem}>
                   • {ingredient.originalText || ingredient.name}
                 </Text>
               ))}

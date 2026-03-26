@@ -31,8 +31,14 @@ public class RecipeQueryService {
     }
 
     @Transactional(readOnly = true)
-    public List<RecipeListItemDto> listRecipes() {
-        return recipeRepository.findAllByOrderByCreatedAtDesc()
+    public List<RecipeListItemDto> listRecipes(String query) {
+        String normalizedQuery = query == null ? "" : query.trim();
+
+        List<Recipe> recipes = normalizedQuery.isEmpty()
+                ? recipeRepository.findAllByOrderByCreatedAtDesc()
+                : recipeRepository.searchByTitleOrIngredient(normalizedQuery);
+
+        return recipes
                 .stream()
                 .map(recipe -> new RecipeListItemDto(
                         recipe.getId(),
