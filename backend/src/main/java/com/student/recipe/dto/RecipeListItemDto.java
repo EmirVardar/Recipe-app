@@ -4,8 +4,10 @@ public record RecipeListItemDto(
         Long id,
         String title,
         String image,
+        String primaryCategory,
         Integer servings,
         Integer readyInMinutes,
-        Double calories
+        Double calories,
+        boolean favorited
 ) {
 }

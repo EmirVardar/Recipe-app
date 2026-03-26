@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import type { RecipeFilters } from '@/components/recipe-filters';
 
 export type AuthResponse = {
   id: number;
@@ -78,9 +79,11 @@ export type RecipeListItemResponse = {
   id: number;
   title: string;
   image: string | null;
+  primaryCategory: string;
   servings: number | null;
   readyInMinutes: number | null;
   calories: number | null;
+  favorited: boolean;
 };
 
 export type RecipeNutritionInfo = {
@@ -121,6 +124,7 @@ export type RecipeDetailResponse = {
   spoonacularId: number;
   title: string;
   image: string | null;
+  primaryCategory: string;
   summary: string | null;
   instructions: string | null;
   servings: number | null;
@@ -143,6 +147,48 @@ export type RecipeDetailResponse = {
   steps: RecipeStepInfo[];
   tags: RecipeTagInfo[];
 };
+
+export type AssistantChatResponse = {
+  answer: string;
+  warnings: string[];
+  suggestions: string[];
+};
+
+function buildRecipeQueryParams(query?: string, filters?: RecipeFilters): string {
+  const params = new URLSearchParams();
+  const safeValue = (value: string | null | undefined) => (value ?? '').trim();
+
+  if (safeValue(query).length > 0) {
+    params.set('q', safeValue(query));
+  }
+
+  if (filters) {
+    if (safeValue(filters.category).length > 0) {
+      params.set('category', safeValue(filters.category));
+    }
+    if (safeValue(filters.minCalories).length > 0) {
+      params.set('minCalories', safeValue(filters.minCalories));
+    }
+    if (safeValue(filters.maxCalories).length > 0) {
+      params.set('maxCalories', safeValue(filters.maxCalories));
+    }
+    if (filters.highProtein) {
+      params.set('highProtein', 'true');
+    }
+    if (filters.shortTime) {
+      params.set('maxReadyInMinutes', '30');
+    }
+    if (filters.vegetarian) {
+      params.set('vegetarian', 'true');
+    }
+    if (filters.vegan) {
+      params.set('vegan', 'true');
+    }
+  }
+
+  const serialized = params.toString();
+  return serialized.length > 0 ? `?${serialized}` : '';
+}
 
 export function getApiBaseUrl(): string {
   const envUrl = process.env.EXPO_PUBLIC_API_URL;
@@ -246,8 +292,8 @@ export async function getNutrition(accessToken: string): Promise<NutritionRespon
   });
 }
 
-export async function getRecipes(accessToken: string): Promise<RecipeListItemResponse[]> {
-  return request<RecipeListItemResponse[]>('/api/recipes', {
+export async function getRecipes(accessToken: string, filters?: RecipeFilters): Promise<RecipeListItemResponse[]> {
+  return request<RecipeListItemResponse[]>(`/api/recipes${buildRecipeQueryParams(undefined, filters)}`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -255,11 +301,40 @@ export async function getRecipes(accessToken: string): Promise<RecipeListItemRes
   });
 }
 
-export async function searchRecipes(accessToken: string, query: string): Promise<RecipeListItemResponse[]> {
-  const params = new URLSearchParams({ q: query });
-
-  return request<RecipeListItemResponse[]>(`/api/recipes?${params.toString()}`, {
+export async function getFavoriteRecipes(accessToken: string): Promise<RecipeListItemResponse[]> {
+  return request<RecipeListItemResponse[]>('/api/recipes/favorites', {
     method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+export async function searchRecipes(
+  accessToken: string,
+  query: string,
+  filters?: RecipeFilters
+): Promise<RecipeListItemResponse[]> {
+  return request<RecipeListItemResponse[]>(`/api/recipes${buildRecipeQueryParams(query, filters)}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+export async function addFavoriteRecipe(accessToken: string, recipeId: number) {
+  return request<{ recipeId: number; favorited: boolean }>(`/api/recipes/favorites/${recipeId}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+export async function removeFavoriteRecipe(accessToken: string, recipeId: number) {
+  return request<{ recipeId: number; favorited: boolean }>(`/api/recipes/favorites/${recipeId}`, {
+    method: 'DELETE',
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -272,6 +347,16 @@ export async function getRecipeDetail(accessToken: string, recipeId: number): Pr
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
+  });
+}
+
+export async function chatWithAssistant(accessToken: string, message: string): Promise<AssistantChatResponse> {
+  return request<AssistantChatResponse>('/api/assistant/chat', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ message }),
   });
 }
 

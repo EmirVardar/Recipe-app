@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
 import { RecipeAccessBanner } from '@/components/recipe-access-banner';
+import { defaultRecipeFilters, RecipeFiltersCard, type RecipeFilters } from '@/components/recipe-filters';
 import { searchRecipes, type RecipeListItemResponse } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
@@ -25,9 +26,33 @@ function formatValue(value: number | null | undefined, suffix = '') {
   return `${rounded}${suffix}`;
 }
 
+function formatCategoryLabel(category: string | null | undefined) {
+  switch (category) {
+    case 'breakfast':
+      return 'Breakfast';
+    case 'lunch':
+      return 'Lunch';
+    case 'dinner':
+      return 'Dinner';
+    case 'dessert':
+      return 'Dessert';
+    case 'snack':
+      return 'Snack';
+    case 'drink':
+      return 'Drink';
+    case 'soup':
+      return 'Soup';
+    case 'salad':
+      return 'Salad';
+    default:
+      return 'Main';
+  }
+}
+
 export default function SearchTabScreen() {
   const { accessToken, isLoggedIn } = useAuth();
   const [query, setQuery] = useState('');
+  const [filters, setFilters] = useState<RecipeFilters>(defaultRecipeFilters);
   const [results, setResults] = useState<RecipeListItemResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -51,7 +76,7 @@ export default function SearchTabScreen() {
     setLoading(true);
     setHasSearched(true);
     try {
-      const nextResults = await searchRecipes(accessToken, normalizedQuery);
+      const nextResults = await searchRecipes(accessToken, normalizedQuery, filters);
       setResults(nextResults);
       setErrorMessage('');
     } catch (error) {
@@ -90,6 +115,21 @@ export default function SearchTabScreen() {
           </Pressable>
         </View>
 
+        {isLoggedIn ? (
+          <RecipeFiltersCard
+            value={filters}
+            onChange={setFilters}
+            onApply={() => {
+              if (query.trim().length > 0) {
+                void handleSearch();
+              }
+            }}
+            onReset={() => {
+              setFilters(defaultRecipeFilters);
+            }}
+          />
+        ) : null}
+
         {errorMessage ? (
           <View style={styles.messageCard}>
             <Text style={styles.messageTitle}>Arama Notu</Text>
@@ -126,6 +166,9 @@ export default function SearchTabScreen() {
 
                 <View style={styles.cardBody}>
                   <View style={styles.cardTopRow}>
+                    <View style={styles.categoryBadge}>
+                      <Text style={styles.categoryBadgeText}>{formatCategoryLabel(recipe.primaryCategory)}</Text>
+                    </View>
                     <Text style={styles.cardTitle}>{recipe.title}</Text>
                     <View style={styles.calorieBadge}>
                       <Text style={styles.calorieBadgeText}>{formatValue(recipe.calories, ' kcal')}</Text>
@@ -269,6 +312,20 @@ const styles = StyleSheet.create({
   cardBody: {
     padding: 18,
     gap: 12,
+  },
+  categoryBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FEF3C7',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  categoryBadgeText: {
+    color: '#92400E',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   cardTopRow: {
     gap: 12,
