@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { getMedical, getNutrition, getProfile, login, register, updateMedical, updateNutrition, updateProfile } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 
 type ProfileFormState = {
   age: string;
@@ -81,10 +82,7 @@ const INTOLERANCE_OPTIONS: string[] = ['Laktoz', 'Gluten', 'Fruktoz', 'Histamin'
 
 export default function ProfileTabScreen() {
   const { width: screenWidth } = useWindowDimensions();
-  const envToken = process.env.EXPO_PUBLIC_ACCESS_TOKEN ?? '';
-  const fallbackName = process.env.EXPO_PUBLIC_USER_NAME ?? 'Community Member';
-  const [accessToken, setAccessToken] = useState(envToken.trim());
-  const [fullName, setFullName] = useState(fallbackName);
+  const { accessToken, fullName, isLoggedIn, setSession } = useAuth();
   const [authScreen, setAuthScreen] = useState<AuthScreen>('getStarted');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -97,8 +95,6 @@ export default function ProfileTabScreen() {
   const [prefillDone, setPrefillDone] = useState(false);
   const [detailPanel, setDetailPanel] = useState<DetailPanel>('editProfile');
   const panelTranslateX = useRef(new Animated.Value(0)).current;
-  const isLoggedIn = accessToken.length > 0;
-
   const [profileForm, setProfileForm] = useState<ProfileFormState>({
     age: '',
     sex: '',
@@ -245,7 +241,7 @@ export default function ProfileTabScreen() {
     }
 
     if (!accessToken) {
-      Alert.alert('Token gerekli', 'Kaydetmek icin .env icinde EXPO_PUBLIC_ACCESS_TOKEN tanimla.');
+      Alert.alert('Giris gerekli', 'Profil bilgilerini kaydetmek icin once giris yap.');
       return;
     }
 
@@ -270,7 +266,7 @@ export default function ProfileTabScreen() {
 
   const onSaveFoodPreferences = async () => {
     if (!accessToken) {
-      Alert.alert('Token gerekli', 'Kaydetmek icin .env icinde EXPO_PUBLIC_ACCESS_TOKEN tanimla.');
+      Alert.alert('Giris gerekli', 'Tercihleri kaydetmek icin once giris yap.');
       return;
     }
     if (!nutritionForm.dietType || !nutritionForm.budgetLevel) {
@@ -318,8 +314,7 @@ export default function ProfileTabScreen() {
     setAuthLoading(true);
     try {
       const response = await login({ email: authEmail.trim(), password: authPassword });
-      setAccessToken(response.accessToken);
-      setFullName(response.fullName || fallbackName);
+      setSession({ accessToken: response.accessToken, fullName: response.fullName || 'Community Member' });
       setPrefillDone(false);
       Alert.alert('Basarili', 'Giris yapildi.');
     } catch (error) {
@@ -343,8 +338,7 @@ export default function ProfileTabScreen() {
         email: authEmail.trim(),
         password: authPassword,
       });
-      setAccessToken(response.accessToken);
-      setFullName(response.fullName || registerName.trim());
+      setSession({ accessToken: response.accessToken, fullName: response.fullName || registerName.trim() });
       setPrefillDone(false);
       Alert.alert('Basarili', 'Hesap olusturuldu ve giris yapildi.');
     } catch (error) {

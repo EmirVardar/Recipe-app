@@ -1,0 +1,309 @@
+{
+  "lastImportedAt" : "2026-03-25T23:33:25.048547+03:00",
+  "lastRequestedLimit" : 1,
+  "seedQueries" : [ "margherita pizza", "pepperoni pizza", "chicken pasta", "spaghetti bolognese", "grilled chicken", "crispy chicken", "beef burger", "cheeseburger", "meatballs", "lentil soup", "caesar salad", "rice pilaf", "chocolate cake", "brownies", "cookies" ],
+  "recipes" : [ {
+    "id" : 1095810,
+    "title" : "Buffalo Mozzarella & Pepperoni Pizza with a Cauliflower Crust",
+    "image" : "https://img.spoonacular.com/recipes/1095810-312x231.jpg",
+    "summary" : "The recipe Buffalo Mozzarella & Pepperoni Pizza with a Cauliflower Crust is ready <b>in roughly 45 minutes</b> and is definitely an awesome <b>gluten free and primal</b> option for lovers of Mediterranean food. One portion of this dish contains approximately <b>33g of protein</b>, <b>41g of fat</b>, and a total of <b>611 calories</b>. For <b>$6.39 per serving</b>, you get a main course that serves 2. A mixture of tomato, egg, pepperoni, and a handful of other ingredients are all it takes to make this recipe so tasty. 1 person has tried and liked this recipe. It is brought to you by Foodista. All things considered, we decided this recipe <b>deserves a spoonacular score of 76%</b>. This score is solid. Try <a href=\"https://spoonacular.com/recipes/cauliflower-crust-pizza-with-chickpea-pepperoni-730307\">Cauliflower Crust Pizza with Chickpea \"Pepperoni</a>, <a href=\"https://spoonacular.com/recipes/cauliflower-crust-pizza-with-tomatoes-and-mozzarella-862011\">Cauliflower-Crust Pizza With Tomatoes and Mozzarella</a>, and <a href=\"https://spoonacular.com/recipes/buffalo-chicken-and-caramelized-onions-pizza-on-cauliflower-crust-560212\">Buffalo Chicken and Caramelized Onions Pizzan on Cauliflower Crust</a> for similar recipes.",
+    "instructions" : null,
+    "servings" : 2,
+    "readyInMinutes" : 45,
+    "sourceUrl" : "https://www.foodista.com/recipe/XX6ZXFRZ/paleo-buffalo-mozzarella-salami-pizza-with-a-cauliflower-crust",
+    "spoonacularSourceUrl" : "https://spoonacular.com/buffalo-mozzarella-pepperoni-pizza-with-a-cauliflower-crust-1095810",
+    "healthScore" : 36.0,
+    "pricePerServing" : 639.42,
+    "vegetarian" : false,
+    "vegan" : false,
+    "glutenFree" : true,
+    "dairyFree" : false,
+    "veryHealthy" : false,
+    "cheap" : false,
+    "veryPopular" : false,
+    "sustainable" : false,
+    "lowFodmap" : false,
+    "dishTypes" : [ "lunch", "main course", "main dish", "dinner" ],
+    "diets" : [ "gluten free", "primal" ],
+    "cuisines" : [ "Mediterranean", "Italian", "European" ],
+    "occasions" : [ ],
+    "analyzedInstructions" : [ {
+      "name" : "",
+      "steps" : [ {
+        "number" : 1,
+        "step" : "Cut up the cauliflower and blend (just the florets, not the stems) until the cauliflower is a rice-like consistency."
+      }, {
+        "number" : 2,
+        "step" : "Remove the cauliflower from the blender and place in a cloth.Squeeze out as much water as possible until the cauliflower is as dry as possible.Then, in a bowl, place the cauliflower, egg, flour, salt, pepper, mixed herbs and garlic powder."
+      }, {
+        "number" : 3,
+        "step" : "Mix all the ingredients well.Grease up some parchment paper and place on a tray."
+      }, {
+        "number" : 4,
+        "step" : "Place the cauliflower on the tray and use your hands to flatten into your desired shape, making the edges thicker to form the 'crust'."
+      }, {
+        "number" : 5,
+        "step" : "Place in the oven for approximately ten minutes or until browned and hardened like a pizza base."
+      }, {
+        "number" : 6,
+        "step" : "Remove from the oven and top with the tomato puree, mozzarella, sliced tomatoes, fresh herbs and pepperoni before placing back in the oven and baking for a further ten minutes or until the cheese has nicely melted."
+      } ]
+    } ],
+    "nutrition" : {
+      "nutrients" : [ {
+        "name" : "Calories",
+        "amount" : 610.95,
+        "unit" : "kcal"
+      }, {
+        "name" : "Fat",
+        "amount" : 40.84,
+        "unit" : "g"
+      }, {
+        "name" : "Saturated Fat",
+        "amount" : 13.71,
+        "unit" : "g"
+      }, {
+        "name" : "Carbohydrates",
+        "amount" : 37.23,
+        "unit" : "g"
+      }, {
+        "name" : "Net Carbohydrates",
+        "amount" : 23.65,
+        "unit" : "g"
+      }, {
+        "name" : "Sugar",
+        "amount" : 13.62,
+        "unit" : "g"
+      }, {
+        "name" : "Cholesterol",
+        "amount" : 146.7,
+        "unit" : "mg"
+      }, {
+        "name" : "Sodium",
+        "amount" : 1985.67,
+        "unit" : "mg"
+      }, {
+        "name" : "Alcohol",
+        "amount" : 0.0,
+        "unit" : "g"
+      }, {
+        "name" : "Alcohol %",
+        "amount" : 0.0,
+        "unit" : "%"
+      }, {
+        "name" : "Protein",
+        "amount" : 33.45,
+        "unit" : "g"
+      }, {
+        "name" : "Vitamin C",
+        "amount" : 221.64,
+        "unit" : "mg"
+      }, {
+        "name" : "Vitamin K",
+        "amount" : 144.73,
+        "unit" : "µg"
+      }, {
+        "name" : "Calcium",
+        "amount" : 1303.92,
+        "unit" : "mg"
+      }, {
+        "name" : "Folate",
+        "amount" : 273.48,
+        "unit" : "µg"
+      }, {
+        "name" : "Manganese",
+        "amount" : 1.14,
+        "unit" : "mg"
+      }, {
+        "name" : "Vitamin A",
+        "amount" : 2742.84,
+        "unit" : "IU"
+      }, {
+        "name" : "Fiber",
+        "amount" : 13.59,
+        "unit" : "g"
+      }, {
+        "name" : "Vitamin B6",
+        "amount" : 1.06,
+        "unit" : "mg"
+      }, {
+        "name" : "Potassium",
+        "amount" : 1816.31,
+        "unit" : "mg"
+      }, {
+        "name" : "Vitamin B5",
+        "amount" : 3.79,
+        "unit" : "mg"
+      }, {
+        "name" : "Phosphorus",
+        "amount" : 318.08,
+        "unit" : "mg"
+      }, {
+        "name" : "Iron",
+        "amount" : 5.3,
+        "unit" : "mg"
+      }, {
+        "name" : "Vitamin B2",
+        "amount" : 0.48,
+        "unit" : "mg"
+      }, {
+        "name" : "Selenium",
+        "amount" : 18.17,
+        "unit" : "µg"
+      }, {
+        "name" : "Magnesium",
+        "amount" : 94.43,
+        "unit" : "mg"
+      }, {
+        "name" : "Vitamin B3",
+        "amount" : 4.72,
+        "unit" : "mg"
+      }, {
+        "name" : "Vitamin B1",
+        "amount" : 0.34,
+        "unit" : "mg"
+      }, {
+        "name" : "Copper",
+        "amount" : 0.42,
+        "unit" : "mg"
+      }, {
+        "name" : "Zinc",
+        "amount" : 2.5,
+        "unit" : "mg"
+      }, {
+        "name" : "Vitamin E",
+        "amount" : 2.22,
+        "unit" : "mg"
+      }, {
+        "name" : "Vitamin B12",
+        "amount" : 0.56,
+        "unit" : "µg"
+      }, {
+        "name" : "Vitamin D",
+        "amount" : 0.8,
+        "unit" : "µg"
+      } ]
+    },
+    "extendedIngredients" : [ {
+      "id" : 11135,
+      "name" : "cauliflower",
+      "originalName" : "cauliflower",
+      "image" : "cauliflower.jpg",
+      "amount" : 1.0,
+      "unit" : "large",
+      "consistency" : "SOLID",
+      "aisle" : "Produce",
+      "original" : "1 large cauliflower"
+    }, {
+      "id" : 1123,
+      "name" : "egg",
+      "originalName" : "egg",
+      "image" : "egg.png",
+      "amount" : 1.0,
+      "unit" : "",
+      "consistency" : "SOLID",
+      "aisle" : "Milk, Eggs, Other Dairy",
+      "original" : "1 egg"
+    }, {
+      "id" : 93740,
+      "name" : "almond flour",
+      "originalName" : "almond flour",
+      "image" : "almond-meal-or-almond-flour.jpg",
+      "amount" : 0.5,
+      "unit" : "cup",
+      "consistency" : "SOLID",
+      "aisle" : "Health Foods",
+      "original" : "1/2 cup almond flour"
+    }, {
+      "id" : 2047,
+      "name" : "salt",
+      "originalName" : "salt",
+      "image" : "salt.jpg",
+      "amount" : 1.0,
+      "unit" : "tsp",
+      "consistency" : "SOLID",
+      "aisle" : "Spices and Seasonings",
+      "original" : "1-2 tsp. salt"
+    }, {
+      "id" : 1002030,
+      "name" : "pepper",
+      "originalName" : "pepper",
+      "image" : "pepper.jpg",
+      "amount" : 1.0,
+      "unit" : "tsp",
+      "consistency" : "SOLID",
+      "aisle" : "Spices and Seasonings",
+      "original" : "1-2 tsp. pepper"
+    }, {
+      "id" : 1002044,
+      "name" : "herbs",
+      "originalName" : "mixed herbs",
+      "image" : "lemon-basil.jpg",
+      "amount" : 1.0,
+      "unit" : "tsp",
+      "consistency" : "SOLID",
+      "aisle" : "Produce",
+      "original" : "1-2 tsp. mixed herbs"
+    }, {
+      "id" : 1022020,
+      "name" : "garlic powder",
+      "originalName" : "garlic powder",
+      "image" : "garlic-powder.png",
+      "amount" : 1.0,
+      "unit" : "tsp",
+      "consistency" : "SOLID",
+      "aisle" : "Spices and Seasonings",
+      "original" : "1 tsp. garlic powder"
+    }, {
+      "id" : 11529,
+      "name" : "tomato",
+      "originalName" : "tomato",
+      "image" : "tomato.png",
+      "amount" : 1.0,
+      "unit" : "",
+      "consistency" : "SOLID",
+      "aisle" : "Produce",
+      "original" : "1 tomato"
+    }, {
+      "id" : 7057,
+      "name" : "pepperoni",
+      "originalName" : "pepperoni",
+      "image" : "pepperoni.png",
+      "amount" : 2.0,
+      "unit" : "servings",
+      "consistency" : "SOLID",
+      "aisle" : "Meat",
+      "original" : "pepperoni"
+    }, {
+      "id" : 98870,
+      "name" : "buffalo mozzarella",
+      "originalName" : "buffalo mozzarella",
+      "image" : "mozzarella.png",
+      "amount" : 3.5,
+      "unit" : "oz",
+      "consistency" : "SOLID",
+      "aisle" : "Cheese",
+      "original" : "3.5 oz buffalo mozzarella"
+    }, {
+      "id" : 11547,
+      "name" : "tomato puree",
+      "originalName" : "tomato puree",
+      "image" : "tomato-paste.jpg",
+      "amount" : 3.5,
+      "unit" : "oz",
+      "consistency" : "SOLID",
+      "aisle" : "Canned and Jarred",
+      "original" : "3.5 oz tomato puree"
+    }, {
+      "id" : 10111297,
+      "name" : "herbs",
+      "originalName" : "Fresh herbs (to garnish)",
+      "image" : "mixed-fresh-herbs.jpg",
+      "amount" : 2.0,
+      "unit" : "servings",
+      "consistency" : "SOLID",
+      "aisle" : "Produce",
+      "original" : "Fresh herbs (to garnish)"
+    } ]
+  } ]
+}
