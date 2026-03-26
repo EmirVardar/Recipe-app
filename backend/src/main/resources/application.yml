@@ -30,3 +30,8 @@ jwt:
 openai:
   api-key: ${OPENAI_API_KEY:}
   chat-model: ${OPENAI_CHAT_MODEL:gpt-4o-mini}
+
+spoonacular:
+  api-key: ${SPOONACULAR_API_KEY:2b32a7de2ddf4d64b3c41ac2d9820139}
+  max-import-limit: ${SPOONACULAR_MAX_IMPORT_LIMIT:10}
+  backup-file: ${SPOONACULAR_BACKUP_FILE:backups/spoonacular/spoonacular-recipes.json}

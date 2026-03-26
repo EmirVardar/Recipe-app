@@ -74,6 +74,76 @@ export type NutritionResponse = {
   budgetLevel: string | null;
 };
 
+export type RecipeListItemResponse = {
+  id: number;
+  title: string;
+  image: string | null;
+  servings: number | null;
+  readyInMinutes: number | null;
+  calories: number | null;
+};
+
+export type RecipeNutritionInfo = {
+  calories: number | null;
+  protein: number | null;
+  fat: number | null;
+  carbs: number | null;
+  fiber: number | null;
+  sugar: number | null;
+  sodium: number | null;
+};
+
+export type RecipeIngredientInfo = {
+  ingredientId: number;
+  spoonacularId: number | null;
+  name: string;
+  originalName: string | null;
+  image: string | null;
+  amount: number | null;
+  unit: string | null;
+  consistency: string | null;
+  aisle: string | null;
+  originalText: string | null;
+};
+
+export type RecipeStepInfo = {
+  stepNumber: number;
+  instruction: string;
+};
+
+export type RecipeTagInfo = {
+  tagType: string;
+  tagValue: string;
+};
+
+export type RecipeDetailResponse = {
+  id: number;
+  spoonacularId: number;
+  title: string;
+  image: string | null;
+  summary: string | null;
+  instructions: string | null;
+  servings: number | null;
+  readyInMinutes: number | null;
+  sourceUrl: string | null;
+  spoonacularSourceUrl: string | null;
+  healthScore: number | null;
+  pricePerServing: number | null;
+  vegetarian: boolean | null;
+  vegan: boolean | null;
+  glutenFree: boolean | null;
+  dairyFree: boolean | null;
+  veryHealthy: boolean | null;
+  cheap: boolean | null;
+  veryPopular: boolean | null;
+  sustainable: boolean | null;
+  lowFodmap: boolean | null;
+  nutrition: RecipeNutritionInfo | null;
+  ingredients: RecipeIngredientInfo[];
+  steps: RecipeStepInfo[];
+  tags: RecipeTagInfo[];
+};
+
 export function getApiBaseUrl(): string {
   const envUrl = process.env.EXPO_PUBLIC_API_URL;
   if (envUrl && envUrl.trim().length > 0) {
@@ -169,6 +239,24 @@ export async function updateNutrition(accessToken: string, payload: NutritionUpd
 
 export async function getNutrition(accessToken: string): Promise<NutritionResponse> {
   return request<NutritionResponse>('/api/me/nutrition', {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+export async function getRecipes(accessToken: string): Promise<RecipeListItemResponse[]> {
+  return request<RecipeListItemResponse[]>('/api/recipes', {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+export async function getRecipeDetail(accessToken: string, recipeId: number): Promise<RecipeDetailResponse> {
+  return request<RecipeDetailResponse>(`/api/recipes/${recipeId}`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${accessToken}`,
