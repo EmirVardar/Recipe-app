@@ -154,6 +154,15 @@ export type AssistantChatResponse = {
   suggestions: string[];
 };
 
+export type HealthTransferResponse = {
+  success: boolean;
+  id: number;
+  adim: number;
+  kalori: number;
+  createdAt: string;
+  message: string;
+};
+
 function buildRecipeQueryParams(query?: string, filters?: RecipeFilters): string {
   const params = new URLSearchParams();
   const safeValue = (value: string | null | undefined) => (value ?? '').trim();
@@ -357,6 +366,12 @@ export async function chatWithAssistant(accessToken: string, message: string): P
       Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify({ message }),
+  });
+}
+
+export async function getHealthTransferRecords(): Promise<HealthTransferResponse[]> {
+  return request<HealthTransferResponse[]>('/api/saglik/kayitlar', {
+    method: 'GET',
   });
 }
 

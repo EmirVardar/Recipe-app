@@ -35,7 +35,7 @@ export default function TabsLayout() {
             index: 'home-outline',
             search: 'search-outline',
             'my-recipes': 'heart-outline',
-            'shopping-list': 'cart-outline',
+            'shopping-list': 'fitness-outline',
             profile: 'person-outline',
           };
 
@@ -43,7 +43,7 @@ export default function TabsLayout() {
             index: 'home',
             search: 'search',
             'my-recipes': 'heart',
-            'shopping-list': 'cart',
+            'shopping-list': 'fitness',
             profile: 'person',
           };
 
@@ -60,7 +60,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="shopping-list"
         options={{
-          title: 'Alisveris',
+          title: 'Saglik',
           tabBarLabelStyle: {
             fontSize: 9,
             fontWeight: '500',
