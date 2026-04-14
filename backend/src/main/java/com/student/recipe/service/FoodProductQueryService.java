@@ -25,27 +25,30 @@ public class FoodProductQueryService {
     }
 
     public List<FoodProductSearchItemDto> search(String query, Integer limit) {
-        String normalizedQuery = query == null ? "" : query.trim();
+        String normalizedQuery = (query == null) ? "" : query.trim();
         if (normalizedQuery.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "q parametresi bos olamaz");
         }
 
         int safeLimit = normalizeLimit(limit);
 
+        // Kelimeleri PostgreSQL'in FTS formatına getiriyoruz (örn: "boiled potato" -> "boiled & potato")
+        String tsQuery = normalizedQuery.trim().replaceAll("\\s+", " & ");
+
         return jdbcTemplate.query(
                 """
                 SELECT
-                    ranked.id,
-                    ranked.fdc_id,
-                    ranked.name,
-                    ranked.default_gram_weight,
-                    ranked.piece_gram_weight,
-                    ranked.calories_per_100g,
-                    ranked.protein_per_100g,
-                    ranked.carbs_per_100g,
-                    ranked.fat_per_100g
+                    results.id,
+                    results.fdc_id,
+                    results.name,
+                    results.default_gram_weight,
+                    results.piece_gram_weight,
+                    results.calories_per_100g,
+                    results.protein_per_100g,
+                    results.carbs_per_100g,
+                    results.fat_per_100g
                 FROM (
-                    SELECT DISTINCT ON (LOWER(name))
+                    SELECT DISTINCT ON (name)
                         id,
                         fdc_id,
                         name,
@@ -55,92 +58,50 @@ public class FoodProductQueryService {
                         protein_per_100g,
                         carbs_per_100g,
                         fat_per_100g,
-                        CASE
-                            WHEN LOWER(name) = LOWER(?) THEN 0
-                            WHEN LOWER(name) LIKE LOWER(?) OR LOWER(name) LIKE LOWER(?) THEN 1
-                            WHEN LOWER(name) LIKE LOWER(?) OR LOWER(name) LIKE LOWER(?) OR LOWER(name) LIKE LOWER(?) THEN 2
-                            ELSE 4
-                        END AS search_rank,
-                        (
-                            CASE WHEN calories_per_100g IS NOT NULL THEN 1 ELSE 0 END +
-                            CASE WHEN protein_per_100g IS NOT NULL THEN 1 ELSE 0 END +
-                            CASE WHEN carbs_per_100g IS NOT NULL THEN 1 ELSE 0 END +
-                            CASE WHEN fat_per_100g IS NOT NULL THEN 1 ELSE 0 END
-                        ) AS nutrition_score,
-                        CASE
-                            WHEN LOWER(name) LIKE LOWER(?)
-                              OR LOWER(name) LIKE LOWER(?)
-                              OR LOWER(name) LIKE LOWER(?)
-                              OR LOWER(name) LIKE LOWER(?)
-                              OR LOWER(name) LIKE LOWER(?)
-                            THEN 0
-                            ELSE 1
-                        END AS basic_food_rank,
-                        CASE
-                            WHEN LOWER(name) LIKE '% with %'
-                              OR LOWER(name) LIKE '% and %'
-                              OR LOWER(name) LIKE '% burrito%'
-                              OR LOWER(name) LIKE '% benedict%'
-                              OR LOWER(name) LIKE '% casserole%'
-                              OR LOWER(name) LIKE '% salad%'
-                              OR LOWER(name) LIKE '% sandwich%'
-                              OR LOWER(name) LIKE '% burger%'
-                              OR LOWER(name) LIKE '% taco%'
-                              OR LOWER(name) LIKE '% pizza%'
-                              OR LOWER(name) LIKE '% deviled%'
-                              OR LOWER(name) LIKE '% creamed%'
-                              OR LOWER(name) LIKE '% foo yung%'
-                              OR LOWER(name) LIKE '% egg roll%'
-                              OR LOWER(name) LIKE '% eggnog%'
-                              OR LOWER(name) LIKE '% dried%'
-                              OR LOWER(name) LIKE '% frozen%'
-                              OR LOWER(name) LIKE '% pasteurized%'
-                              OR LOWER(name) LIKE '% dehydrated%'
-                              OR LOWER(name) LIKE '% powdered%'
-                              OR LOWER(name) LIKE '% powder%'
-                              OR LOWER(name) LIKE '% canned%'
-                              OR LOWER(name) LIKE '%brand%'
-                              OR LOWER(name) LIKE '%producer%'
-                            THEN 1
+                        -- 1. Full Text Search Rank (Kelime eşleşme kalitesi)
+                        ts_rank(to_tsvector('english', name), to_tsquery('english', ?)) AS word_rank,
+                        -- 2. Trigram Similarity (Yazım hatası toleransı)
+                        similarity(name, ?) AS sim_score,
+                        -- 3. Temel Gıda Önceliği (Sadece isim olanlar veya haşlanmış/çiğ gibi temel yöntemler)
+                        CASE 
+                            WHEN name NOT LIKE '%,%' THEN 2 
+                            WHEN name ILIKE ANY (ARRAY['%boiled%', '%raw%', '%baked%', '%roasted%']) THEN 1
+                            ELSE 0 
+                        END AS basic_priority,
+                        -- 4. Teknik Terim Cezası (NFS, Salt, Ready-to-heat gibi gürültüleri arkaya itmek için)
+                        CASE 
+                            WHEN name ILIKE '%NFS%' OR name ILIKE '%specified%' OR name ILIKE '%fat added%' THEN -1
                             ELSE 0
-                        END AS composite_penalty,
-                        CASE WHEN LOWER(name) ~ '[0-9]{4,}' THEN 1 ELSE 0 END AS code_penalty,
-                        LENGTH(name) AS name_length
+                        END AS noise_penalty
                     FROM food_products
-                    WHERE LOWER(name) LIKE LOWER(?)
-                    ORDER BY
-                        LOWER(name),
-                        basic_food_rank ASC,
-                        composite_penalty ASC,
-                        nutrition_score DESC,
-                        search_rank ASC,
-                        code_penalty ASC,
-                        name_length ASC,
-                        id ASC
-                ) ranked
-                ORDER BY
-                    ranked.search_rank ASC,
-                    ranked.basic_food_rank ASC,
-                    ranked.composite_penalty ASC,
-                    ranked.nutrition_score DESC,
-                    ranked.code_penalty ASC,
-                    ranked.name_length ASC,
-                    ranked.name ASC
+                    WHERE 
+                        to_tsvector('english', name) @@ to_tsquery('english', ?) -- Kelime bazlı arama
+                        OR name % ? -- Benzerlik bazlı arama (Yazım hatası için)
+                ) results
+                ORDER BY 
+                    -- 1. KESİN ÖNCELİK: Tam eşleşme, sonra "Egg, ..." formatı, sonra diğer başlangıçlar
+                    (CASE 
+                        WHEN results.name ILIKE ? THEN 1
+                        WHEN results.name ILIKE (? || ',%') THEN 2
+                        WHEN results.name ILIKE (? || '%') THEN 3
+                        ELSE 4
+                    END) ASC,
+
+                    -- 2. Diğer akıllı skorlar
+                    (results.word_rank * 2 + results.sim_score + results.basic_priority + results.noise_penalty) DESC,
+
+                    -- 3. Kısa isim daha sade kabul ediliyor
+                    LENGTH(results.name) ASC
                 LIMIT ?
                 """,
                 foodProductRowMapper(),
-                normalizedQuery,
-                normalizedQuery + ",%",
-                normalizedQuery + " %",
-                "% " + normalizedQuery + ",%",
-                "% " + normalizedQuery + " %",
-                "% " + normalizedQuery,
-                normalizedQuery + ", whole%",
-                normalizedQuery + ", white%",
-                normalizedQuery + ", yolk%",
-                normalizedQuery + ", cooked%",
-                normalizedQuery + ", boiled%",
-                "%" + normalizedQuery + "%",
+                tsQuery,           // ts_rank için
+                normalizedQuery,   // similarity için
+                tsQuery,           // WHERE @@ için
+                normalizedQuery,   // WHERE % için
+                normalizedQuery,   // exact match ORDER BY için
+                normalizedQuery,   // comma-prefix ORDER BY için
+                normalizedQuery,   // prefix ORDER BY için
                 safeLimit
         );
     }
@@ -149,15 +110,12 @@ public class FoodProductQueryService {
         if (limit == null) {
             return DEFAULT_LIMIT;
         }
-
         if (limit < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "limit 1'den kucuk olamaz");
         }
-
         if (limit > MAX_LIMIT) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "limit 50'den buyuk olamaz");
         }
-
         return limit;
     }
 

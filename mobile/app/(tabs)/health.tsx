@@ -138,7 +138,7 @@ export default function ShoppingListTabScreen() {
 
     setSearchLoading(true);
     const timeoutId = setTimeout(() => {
-      void searchFoodProducts(normalizedQuery, 3)
+      void searchFoodProducts(normalizedQuery, 10)
         .then((results) => {
           setFoodResults(results);
           setErrorMessage('');

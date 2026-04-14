@@ -127,27 +127,28 @@ public class FnddsImportService {
                     OR nutrient.nutrient_nbr = food_nutrient.nutrient_id::text
                 LEFT JOIN LATERAL (
                     SELECT
+                        -- 15 gram altini (sos/susleme gibi) default saymiyoruz
                         MIN(portion.gram_weight) FILTER (
                             WHERE portion.gram_weight IS NOT NULL
-                              AND portion.gram_weight > 0
+                              AND portion.gram_weight >= 15.0
                         ) AS default_gram_weight,
-                        MIN(portion.gram_weight) FILTER (
-                            WHERE portion.gram_weight IS NOT NULL
-                              AND portion.gram_weight > 0
+                        
+                        -- Akilli Piece Gram Secimi: Standart birime (50g) en yakin olani al
+                        (
+                            SELECT p.gram_weight 
+                            FROM fndds_food_portion_raw p
+                            LEFT JOIN fndds_measure_unit_raw unit_inner ON unit_inner.id = p.measure_unit_id
+                            WHERE p.fdc_id = food.fdc_id
+                              AND p.gram_weight > 0
                               AND (
-                                  LOWER(COALESCE(unit.name, '')) IN ('piece', 'whole', 'egg', 'patty', 'link', 'slice')
-                                  OR LOWER(COALESCE(portion.portion_description, '')) LIKE '%piece%'
-                                  OR LOWER(COALESCE(portion.portion_description, '')) LIKE '%whole%'
-                                  OR LOWER(COALESCE(portion.portion_description, '')) LIKE '%egg%'
-                                  OR LOWER(COALESCE(portion.portion_description, '')) LIKE '%slice%'
-                                  OR LOWER(COALESCE(portion.modifier, '')) LIKE '%piece%'
-                                  OR LOWER(COALESCE(portion.modifier, '')) LIKE '%whole%'
-                                  OR LOWER(COALESCE(portion.modifier, '')) LIKE '%egg%'
+                                  LOWER(COALESCE(unit_inner.name, '')) IN ('piece', 'whole', 'egg', 'patty', 'link', 'slice', 'unit')
+                                  OR LOWER(COALESCE(p.portion_description, '')) ~ '(whole|piece|egg|unit|each|slice)'
+                                  OR LOWER(COALESCE(p.modifier, '')) ~ '(whole|piece|egg|unit|each|slice)'
                               )
+                            ORDER BY ABS(p.gram_weight - 50.0) ASC, p.gram_weight DESC 
+                            LIMIT 1
                         ) AS piece_gram_weight
                     FROM fndds_food_portion_raw portion
-                    LEFT JOIN fndds_measure_unit_raw unit
-                        ON unit.id = portion.measure_unit_id
                     WHERE portion.fdc_id = food.fdc_id
                 ) portions ON TRUE
                 WHERE food.description IS NOT NULL
@@ -171,6 +172,9 @@ public class FnddsImportService {
                 "FNDDS raw veriden aktif food_products tablosu guncellendi"
         );
     }
+
+    // ... Geri kalan metodlar (ensureRequiredFilesExist, createRawTables, syncMainFoodProducts, readCsv, vb.) degismedi ...
+    // ... Onlari oldugu gibi birakabilir veya dosyanin devamina ekleyebilirsin ...
 
     private void ensureRequiredFilesExist() {
         for (String fileName : List.of(
