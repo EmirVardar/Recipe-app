@@ -6,3 +6,4 @@ mobile/node_modules/
 mobile/.expo/
 .env
 .env.local
+*.csv

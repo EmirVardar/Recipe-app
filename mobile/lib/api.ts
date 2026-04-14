@@ -163,6 +163,58 @@ export type HealthTransferResponse = {
   message: string;
 };
 
+export type FoodProductSearchItemResponse = {
+  id: number;
+  fdcId: number;
+  name: string;
+  defaultGramWeight: number | null;
+  pieceGramWeight: number | null;
+  caloriesPer100g: number | null;
+  proteinPer100g: number | null;
+  carbsPer100g: number | null;
+  fatPer100g: number | null;
+};
+
+export type MealLogItemCreateRequest = {
+  logDate?: string;
+  mealType: string;
+  foodProductId: number;
+  quantity: number;
+  unitType: string;
+};
+
+export type MealLogItemResponse = {
+  id: number;
+  foodProductId: number;
+  foodName: string;
+  quantity: number;
+  unitType: string;
+  gramEquivalent: number;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+};
+
+export type MealLogResponse = {
+  id: number;
+  mealType: string;
+  totalCalories: number;
+  totalProtein: number;
+  totalCarbs: number;
+  totalFat: number;
+  items: MealLogItemResponse[];
+};
+
+export type DailyMealLogsResponse = {
+  logDate: string;
+  totalCalories: number;
+  totalProtein: number;
+  totalCarbs: number;
+  totalFat: number;
+  meals: MealLogResponse[];
+};
+
 function buildRecipeQueryParams(query?: string, filters?: RecipeFilters): string {
   const params = new URLSearchParams();
   const safeValue = (value: string | null | undefined) => (value ?? '').trim();
@@ -375,6 +427,62 @@ export async function getHealthTransferRecords(): Promise<HealthTransferResponse
   });
 }
 
+export async function searchFoodProducts(
+  query: string,
+  limit = 12
+): Promise<FoodProductSearchItemResponse[]> {
+  const params = new URLSearchParams({
+    q: query,
+    limit: String(limit),
+  });
+
+  return request<FoodProductSearchItemResponse[]>(`/api/foods?${params.toString()}`, {
+    method: 'GET',
+  });
+}
+
+export async function getDailyMeals(
+  accessToken: string,
+  date?: string
+): Promise<DailyMealLogsResponse> {
+  const query = date ? `?date=${encodeURIComponent(date)}` : '';
+  return request<DailyMealLogsResponse>(`/api/meals${query}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+export async function addMealItem(accessToken: string, payload: MealLogItemCreateRequest) {
+  return request<MealLogItemResponse>('/api/meals/items', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateMealItem(accessToken: string, itemId: number, payload: MealLogItemCreateRequest) {
+  return request<MealLogItemResponse>(`/api/meals/items/${itemId}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteMealItem(accessToken: string, itemId: number) {
+  return request<void>(`/api/meals/items/${itemId}`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
 async function request<T>(path: string, init: RequestInit): Promise<T> {
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...init,
@@ -397,5 +505,14 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
     throw new Error(errorMessage);
   }
 
-  return (await response.json()) as T;
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const responseText = await response.text();
+  if (!responseText) {
+    return undefined as T;
+  }
+
+  return JSON.parse(responseText) as T;
 }

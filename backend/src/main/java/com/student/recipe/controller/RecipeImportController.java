@@ -25,4 +25,11 @@ public class RecipeImportController {
     ) {
         return ResponseEntity.ok(recipeImportService.importPopularRecipes(limit));
     }
+
+    @PostMapping("/spoonacular/random")
+    public ResponseEntity<SpoonacularImportResponseDto> importRandomRecipes(
+            @RequestParam(defaultValue = "5") int limit
+    ) {
+        return ResponseEntity.ok(recipeImportService.importRandomRecipes(limit));
+    }
 }
