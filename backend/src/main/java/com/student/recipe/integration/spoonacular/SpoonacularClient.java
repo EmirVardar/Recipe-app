@@ -23,17 +23,6 @@ public class SpoonacularClient {
                 .build();
     }
 
-    public RandomRecipesResponse fetchRandomRecipes(String apiKey, int limit) {
-        return restClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/recipes/random")
-                        .queryParam("apiKey", apiKey)
-                        .queryParam("number", limit)
-                        .build())
-                .retrieve()
-                .body(RandomRecipesResponse.class);
-    }
-
     public List<SpoonacularRecipe> searchRecipes(String apiKey, String query, int limit) {
         SearchRecipesResponse response;
         try {
@@ -69,11 +58,6 @@ public class SpoonacularClient {
         }
 
         return new ArrayList<>(response.results());
-    }
-
-    public record RandomRecipesResponse(
-            List<SpoonacularRecipe> recipes
-    ) {
     }
 
     public record SearchRecipesResponse(

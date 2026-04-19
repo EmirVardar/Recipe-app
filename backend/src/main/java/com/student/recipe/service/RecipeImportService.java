@@ -43,109 +43,6 @@ public class RecipeImportService {
 
     private static final long SPOONACULAR_REQUEST_DELAY_MS = 10000L;
 
-    private static final List<String> POPULAR_RECIPE_QUERIES = List.of(
-            "pizza",
-            "cheeseburger",
-            "spaghetti bolognese",
-            "lasagna",
-            "macaroni and cheese",
-            "chicken alfredo",
-            "fried rice",
-            "chicken curry",
-            "butter chicken",
-            "beef stew",
-            "meatballs",
-            "grilled chicken",
-            "roast chicken",
-            "steak",
-            "fish and chips",
-            "chicken wings",
-            "tacos",
-            "burrito",
-            "quesadilla",
-            "sushi",
-            "ramen",
-            "noodle soup",
-            "caesar salad",
-            "greek salad",
-            "cobb salad",
-            "tomato soup",
-            "lentil soup",
-            "mushroom soup",
-            "vegetable soup",
-            "mushroom risotto",
-            "paella",
-            "shawarma",
-            "doner kebab",
-            "falafel",
-            "hummus",
-            "omelette",
-            "menemen",
-            "shakshuka",
-            "mashed potatoes",
-            "french fries",
-            "baked potato",
-            "grilled salmon",
-            "salmon pasta",
-            "shrimp pasta",
-            "tuna sandwich",
-            "club sandwich",
-            "grilled cheese",
-            "chicken sandwich",
-            "hot dog",
-            "meatloaf",
-            "roast beef",
-            "meatball sub",
-            "nachos",
-            "burrito bowl",
-            "fried chicken",
-            "chicken nuggets",
-            "chili con carne",
-            "beef tacos",
-            "chicken fajitas",
-            "shepherd's pie",
-            "potato gratin",
-            "chicken soup",
-            "minestrone",
-            "pumpkin soup",
-            "garlic bread",
-            "adana kebab",
-            "iskender kebab",
-            "pide",
-            "lahmacun",
-            "manti",
-            "baklava",
-            "kunefe",
-            "rice pudding",
-            "semolina cake",
-            "tiramisu",
-            "cheesecake",
-            "chocolate cake",
-            "brownies",
-            "cookies",
-            "apple pie",
-            "pancakes",
-            "waffles",
-            "crepes",
-            "ice cream",
-            "milkshake",
-            "smoothie",
-            "lemonade",
-            "iced tea",
-            "iced coffee",
-            "turkish coffee",
-            "latte",
-            "cappuccino",
-            "hot chocolate",
-            "orange juice",
-            "ayran",
-            "bubble tea",
-            "frappe",
-            "mojito",
-            "banana bread",
-            "croissant"
-    );
-
     private final SpoonacularClient spoonacularClient;
     private final RecipeRepository recipeRepository;
     private final IngredientRepository ingredientRepository;
@@ -183,19 +80,6 @@ public class RecipeImportService {
 
         int limit = normalizeLimit(requestedLimit);
         List<SpoonacularRecipe> recipes = fetchPopularRecipes(limit);
-        writeBackupFile(recipes);
-
-        return persistRecipes(limit, recipes);
-    }
-
-    @Transactional
-    public SpoonacularImportResponseDto importRandomRecipes(int requestedLimit) {
-        if (apiKey == null || apiKey.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Spoonacular API key is missing");
-        }
-
-        int limit = normalizeLimit(requestedLimit);
-        List<SpoonacularRecipe> recipes = fetchRandomRecipes(limit);
         writeBackupFile(recipes);
 
         return persistRecipes(limit, recipes);
@@ -244,27 +128,18 @@ public class RecipeImportService {
         return new SpoonacularImportResponseDto(limit, recipes.size(), created, updated);
     }
 
-    private List<SpoonacularRecipe> fetchRandomRecipes(int limit) {
-        SpoonacularClient.RandomRecipesResponse response = spoonacularClient.fetchRandomRecipes(apiKey, limit);
-        if (response == null || response.recipes() == null) {
-            return List.of();
-        }
-
-        return response.recipes()
-                .stream()
-                .filter(recipe -> recipe != null && recipe.id() != null && hasMinimumRecipeData(recipe))
-                .toList();
-    }
-
     private List<SpoonacularRecipe> fetchPopularRecipes(int limit) {
         Map<Long, SpoonacularRecipe> uniqueRecipes = new LinkedHashMap<>();
         boolean firstRequest = true;
-        List<ImportQuery> pendingQueries = getOrCreatePendingQueries();
+        int requestCount = 0;
+        List<ImportQuery> pendingQueries = getPendingQueries();
 
         for (ImportQuery importQuery : pendingQueries) {
-            if (uniqueRecipes.size() >= limit) {
+            if (requestCount >= limit) {
                 break;
             }
+
+            requestCount++;
 
             if (!firstRequest) {
                 waitBeforeNextSpoonacularRequest();
@@ -275,16 +150,27 @@ public class RecipeImportService {
             try {
                 importQuery.setLastAttemptAt(attemptTime);
                 importQueryRepository.save(importQuery);
-                searchResults = spoonacularClient.searchRecipes(apiKey, importQuery.getQueryText(), 2);
+                searchResults = spoonacularClient.searchRecipes(apiKey, importQuery.getQueryText(), 1);
             } catch (Exception exception) {
-                markQueryAsSearched(importQuery, attemptTime, false);
-                // Skip broken queries instead of failing the whole import batch.
                 if (exception instanceof ResponseStatusException responseStatusException) {
                     HttpStatusCode statusCode = responseStatusException.getStatusCode();
+                    if (statusCode.value() == HttpStatus.PAYMENT_REQUIRED.value()) {
+                        // Daily point limit is exhausted; keep the query pending for a later retry.
+                        throw new ResponseStatusException(
+                                HttpStatus.PAYMENT_REQUIRED,
+                                "Spoonacular gunluk puan limiti doldu. Yarim kalan sorgulari daha sonra tekrar deneyebilirsin.",
+                                responseStatusException
+                        );
+                    }
+
+                    markQueryAsSearched(importQuery, attemptTime, false);
                     if (statusCode.value() >= 400 && statusCode.value() < 500) {
                         continue;
                     }
+                    continue;
                 }
+
+                markQueryAsSearched(importQuery, attemptTime, false);
                 continue;
             }
             firstRequest = false;
@@ -297,9 +183,6 @@ public class RecipeImportService {
 
                 queryProducedValidRecipe = true;
                 uniqueRecipes.putIfAbsent(recipe.id(), recipe);
-                if (uniqueRecipes.size() >= limit) {
-                    break;
-                }
             }
 
             markQueryAsSearched(importQuery, attemptTime, queryProducedValidRecipe);
@@ -502,18 +385,7 @@ public class RecipeImportService {
         }
     }
 
-    private List<ImportQuery> getOrCreatePendingQueries() {
-        for (String query : POPULAR_RECIPE_QUERIES) {
-            if (importQueryRepository.findByQueryTextIgnoreCase(query).isPresent()) {
-                continue;
-            }
-
-            ImportQuery importQuery = new ImportQuery();
-            importQuery.setQueryText(query);
-            importQuery.setCompleted(false);
-            importQueryRepository.save(importQuery);
-        }
-
+    private List<ImportQuery> getPendingQueries() {
         return importQueryRepository.findAllBySearchedFalseOrderByIdAsc();
     }
 
