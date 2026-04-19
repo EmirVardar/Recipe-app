@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import type { RecipeFilters } from '@/components/recipe-filters';
 
 export type AuthResponse = {
   id: number;
@@ -78,9 +79,11 @@ export type RecipeListItemResponse = {
   id: number;
   title: string;
   image: string | null;
+  primaryCategory: string;
   servings: number | null;
   readyInMinutes: number | null;
   calories: number | null;
+  favorited: boolean;
 };
 
 export type RecipeNutritionInfo = {
@@ -121,6 +124,7 @@ export type RecipeDetailResponse = {
   spoonacularId: number;
   title: string;
   image: string | null;
+  primaryCategory: string;
   summary: string | null;
   instructions: string | null;
   servings: number | null;
@@ -143,6 +147,109 @@ export type RecipeDetailResponse = {
   steps: RecipeStepInfo[];
   tags: RecipeTagInfo[];
 };
+
+export type AssistantChatResponse = {
+  answer: string;
+  warnings: string[];
+  suggestions: string[];
+};
+
+export type HealthTransferResponse = {
+  success: boolean;
+  id: number;
+  adim: number;
+  kalori: number;
+  createdAt: string;
+  message: string;
+};
+
+export type FoodProductSearchItemResponse = {
+  id: number;
+  fdcId: number;
+  name: string;
+  defaultGramWeight: number | null;
+  pieceGramWeight: number | null;
+  caloriesPer100g: number | null;
+  proteinPer100g: number | null;
+  carbsPer100g: number | null;
+  fatPer100g: number | null;
+};
+
+export type MealLogItemCreateRequest = {
+  logDate?: string;
+  mealType: string;
+  foodProductId: number;
+  quantity: number;
+  unitType: string;
+};
+
+export type MealLogItemResponse = {
+  id: number;
+  foodProductId: number;
+  foodName: string;
+  quantity: number;
+  unitType: string;
+  gramEquivalent: number;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+};
+
+export type MealLogResponse = {
+  id: number;
+  mealType: string;
+  totalCalories: number;
+  totalProtein: number;
+  totalCarbs: number;
+  totalFat: number;
+  items: MealLogItemResponse[];
+};
+
+export type DailyMealLogsResponse = {
+  logDate: string;
+  totalCalories: number;
+  totalProtein: number;
+  totalCarbs: number;
+  totalFat: number;
+  meals: MealLogResponse[];
+};
+
+function buildRecipeQueryParams(query?: string, filters?: RecipeFilters): string {
+  const params = new URLSearchParams();
+  const safeValue = (value: string | null | undefined) => (value ?? '').trim();
+
+  if (safeValue(query).length > 0) {
+    params.set('q', safeValue(query));
+  }
+
+  if (filters) {
+    if (safeValue(filters.category).length > 0) {
+      params.set('category', safeValue(filters.category));
+    }
+    if (safeValue(filters.minCalories).length > 0) {
+      params.set('minCalories', safeValue(filters.minCalories));
+    }
+    if (safeValue(filters.maxCalories).length > 0) {
+      params.set('maxCalories', safeValue(filters.maxCalories));
+    }
+    if (filters.highProtein) {
+      params.set('highProtein', 'true');
+    }
+    if (filters.shortTime) {
+      params.set('maxReadyInMinutes', '30');
+    }
+    if (filters.vegetarian) {
+      params.set('vegetarian', 'true');
+    }
+    if (filters.vegan) {
+      params.set('vegan', 'true');
+    }
+  }
+
+  const serialized = params.toString();
+  return serialized.length > 0 ? `?${serialized}` : '';
+}
 
 export function getApiBaseUrl(): string {
   const envUrl = process.env.EXPO_PUBLIC_API_URL;
@@ -246,8 +353,8 @@ export async function getNutrition(accessToken: string): Promise<NutritionRespon
   });
 }
 
-export async function getRecipes(accessToken: string): Promise<RecipeListItemResponse[]> {
-  return request<RecipeListItemResponse[]>('/api/recipes', {
+export async function getRecipes(accessToken: string, filters?: RecipeFilters): Promise<RecipeListItemResponse[]> {
+  return request<RecipeListItemResponse[]>(`/api/recipes${buildRecipeQueryParams(undefined, filters)}`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -255,11 +362,40 @@ export async function getRecipes(accessToken: string): Promise<RecipeListItemRes
   });
 }
 
-export async function searchRecipes(accessToken: string, query: string): Promise<RecipeListItemResponse[]> {
-  const params = new URLSearchParams({ q: query });
-
-  return request<RecipeListItemResponse[]>(`/api/recipes?${params.toString()}`, {
+export async function getFavoriteRecipes(accessToken: string): Promise<RecipeListItemResponse[]> {
+  return request<RecipeListItemResponse[]>('/api/recipes/favorites', {
     method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+export async function searchRecipes(
+  accessToken: string,
+  query: string,
+  filters?: RecipeFilters
+): Promise<RecipeListItemResponse[]> {
+  return request<RecipeListItemResponse[]>(`/api/recipes${buildRecipeQueryParams(query, filters)}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+export async function addFavoriteRecipe(accessToken: string, recipeId: number) {
+  return request<{ recipeId: number; favorited: boolean }>(`/api/recipes/favorites/${recipeId}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+export async function removeFavoriteRecipe(accessToken: string, recipeId: number) {
+  return request<{ recipeId: number; favorited: boolean }>(`/api/recipes/favorites/${recipeId}`, {
+    method: 'DELETE',
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -269,6 +405,78 @@ export async function searchRecipes(accessToken: string, query: string): Promise
 export async function getRecipeDetail(accessToken: string, recipeId: number): Promise<RecipeDetailResponse> {
   return request<RecipeDetailResponse>(`/api/recipes/${recipeId}`, {
     method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+export async function chatWithAssistant(accessToken: string, message: string): Promise<AssistantChatResponse> {
+  return request<AssistantChatResponse>('/api/assistant/chat', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ message }),
+  });
+}
+
+export async function getHealthTransferRecords(): Promise<HealthTransferResponse[]> {
+  return request<HealthTransferResponse[]>('/api/saglik/kayitlar', {
+    method: 'GET',
+  });
+}
+
+export async function searchFoodProducts(
+  query: string,
+  limit = 12
+): Promise<FoodProductSearchItemResponse[]> {
+  const params = new URLSearchParams({
+    q: query,
+    limit: String(limit),
+  });
+
+  return request<FoodProductSearchItemResponse[]>(`/api/foods?${params.toString()}`, {
+    method: 'GET',
+  });
+}
+
+export async function getDailyMeals(
+  accessToken: string,
+  date?: string
+): Promise<DailyMealLogsResponse> {
+  const query = date ? `?date=${encodeURIComponent(date)}` : '';
+  return request<DailyMealLogsResponse>(`/api/meals${query}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+export async function addMealItem(accessToken: string, payload: MealLogItemCreateRequest) {
+  return request<MealLogItemResponse>('/api/meals/items', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateMealItem(accessToken: string, itemId: number, payload: MealLogItemCreateRequest) {
+  return request<MealLogItemResponse>(`/api/meals/items/${itemId}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteMealItem(accessToken: string, itemId: number) {
+  return request<void>(`/api/meals/items/${itemId}`, {
+    method: 'DELETE',
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -297,5 +505,14 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
     throw new Error(errorMessage);
   }
 
-  return (await response.json()) as T;
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const responseText = await response.text();
+  if (!responseText) {
+    return undefined as T;
+  }
+
+  return JSON.parse(responseText) as T;
 }

@@ -7,6 +7,7 @@ public record RecipeDetailDto(
         Long spoonacularId,
         String title,
         String image,
+        String primaryCategory,
         String summary,
         String instructions,
         Integer servings,

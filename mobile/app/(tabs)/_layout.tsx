@@ -35,7 +35,7 @@ export default function TabsLayout() {
             index: 'home-outline',
             search: 'search-outline',
             'my-recipes': 'heart-outline',
-            'shopping-list': 'cart-outline',
+            health: 'fitness-outline',
             profile: 'person-outline',
           };
 
@@ -43,7 +43,7 @@ export default function TabsLayout() {
             index: 'home',
             search: 'search',
             'my-recipes': 'heart',
-            'shopping-list': 'cart',
+            health: 'fitness',
             profile: 'person',
           };
 
@@ -58,9 +58,9 @@ export default function TabsLayout() {
       <Tabs.Screen name="search" options={{ title: 'Ara' }} />
       <Tabs.Screen name="my-recipes" options={{ title: 'Tariflerim' }} />
       <Tabs.Screen
-        name="shopping-list"
+        name="health"
         options={{
-          title: 'Alisveris',
+          title: 'Saglik',
           tabBarLabelStyle: {
             fontSize: 9,
             fontWeight: '500',

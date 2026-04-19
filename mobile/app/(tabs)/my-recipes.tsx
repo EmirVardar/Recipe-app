@@ -11,9 +11,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { RecipeAccessBanner } from '@/components/recipe-access-banner';
-import { getRecipes, type RecipeListItemResponse } from '@/lib/api';
+import { getFavoriteRecipes, type RecipeListItemResponse } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 function formatValue(value: number | null | undefined, suffix = '') {
@@ -23,6 +24,29 @@ function formatValue(value: number | null | undefined, suffix = '') {
 
   const rounded = Number.isInteger(value) ? String(value) : value.toFixed(1);
   return `${rounded}${suffix}`;
+}
+
+function formatCategoryLabel(category: string | null | undefined) {
+  switch (category) {
+    case 'breakfast':
+      return 'Breakfast';
+    case 'lunch':
+      return 'Lunch';
+    case 'dinner':
+      return 'Dinner';
+    case 'dessert':
+      return 'Dessert';
+    case 'snack':
+      return 'Snack';
+    case 'drink':
+      return 'Drink';
+    case 'soup':
+      return 'Soup';
+    case 'salad':
+      return 'Salad';
+    default:
+      return 'Main';
+  }
 }
 
 export default function MyRecipesTabScreen() {
@@ -48,7 +72,7 @@ export default function MyRecipesTabScreen() {
     }
 
     try {
-      const nextRecipes = await getRecipes(accessToken);
+      const nextRecipes = await getFavoriteRecipes(accessToken);
       setRecipes(nextRecipes);
       setErrorMessage('');
     } catch (error) {
@@ -63,6 +87,12 @@ export default function MyRecipesTabScreen() {
     void loadRecipes();
   }, [loadRecipes]);
 
+  useFocusEffect(
+    useCallback(() => {
+      void loadRecipes();
+    }, [loadRecipes])
+  );
+
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <ScrollView
@@ -71,7 +101,7 @@ export default function MyRecipesTabScreen() {
         <View style={styles.header}>
           <Text style={styles.eyebrow}>ReciPulse Tarif Kutusu</Text>
           <Text style={styles.title}>Tariflerim</Text>
-          <Text style={styles.subtitle}>{"Backend'den gelen tarifleri burada sade bir listede tutuyoruz."}</Text>
+          <Text style={styles.subtitle}>Favoriye ekledigin tarifler burada kisisel listen olarak tutulur.</Text>
         </View>
 
         {!isLoggedIn ? <RecipeAccessBanner onOpenProfile={() => router.push('/(tabs)/profile')} /> : null}
@@ -89,37 +119,47 @@ export default function MyRecipesTabScreen() {
             <Text style={styles.loaderText}>Tarifler yukleniyor...</Text>
           </View>
         ) : isLoggedIn ? (
-          <View style={styles.list}>
-            {recipes.map((recipe) => {
-              return (
-                <Pressable key={recipe.id} style={styles.card} onPress={() => router.push(`/recipes/${recipe.id}`)}>
-                  <Image
-                    source={{
-                      uri:
-                        recipe.image ??
-                        'https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&w=1200&q=80',
-                    }}
-                    style={styles.cardImage}
-                  />
+          recipes.length > 0 ? (
+            <View style={styles.list}>
+              {recipes.map((recipe) => {
+                return (
+                  <Pressable key={recipe.id} style={styles.card} onPress={() => router.push(`/recipes/${recipe.id}`)}>
+                    <Image
+                      source={{
+                        uri:
+                          recipe.image ??
+                          'https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&w=1200&q=80',
+                      }}
+                      style={styles.cardImage}
+                    />
 
-                  <View style={styles.cardBody}>
-                    <View style={styles.cardTopRow}>
-                      <Text style={styles.cardTitle}>{recipe.title}</Text>
-                      <View style={styles.calorieBadge}>
-                        <Text style={styles.calorieBadgeText}>{formatValue(recipe.calories, ' kcal')}</Text>
+                    <View style={styles.cardBody}>
+                      <View style={styles.cardTopRow}>
+                        <View style={styles.categoryBadge}>
+                          <Text style={styles.categoryBadgeText}>{formatCategoryLabel(recipe.primaryCategory)}</Text>
+                        </View>
+                        <Text style={styles.cardTitle}>{recipe.title}</Text>
+                        <View style={styles.calorieBadge}>
+                          <Text style={styles.calorieBadgeText}>{formatValue(recipe.calories, ' kcal')}</Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.metaRow}>
+                        <Text style={styles.metaText}>{formatValue(recipe.readyInMinutes, ' dk')}</Text>
+                        <Text style={styles.metaDot}>•</Text>
+                        <Text style={styles.metaText}>{formatValue(recipe.servings, ' porsiyon')}</Text>
                       </View>
                     </View>
-
-                    <View style={styles.metaRow}>
-                      <Text style={styles.metaText}>{formatValue(recipe.readyInMinutes, ' dk')}</Text>
-                      <Text style={styles.metaDot}>•</Text>
-                      <Text style={styles.metaText}>{formatValue(recipe.servings, ' porsiyon')}</Text>
-                    </View>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>Henuz favori yok</Text>
+              <Text style={styles.emptyBody}>Ana sayfada kalp butonuyla begendigin tarifleri buraya ekleyebilirsin.</Text>
+            </View>
+          )
         ) : null}
       </ScrollView>
     </SafeAreaView>
@@ -188,6 +228,24 @@ const styles = StyleSheet.create({
   list: {
     gap: 14,
   },
+  emptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    gap: 6,
+  },
+  emptyTitle: {
+    color: '#111827',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  emptyBody: {
+    color: '#6B7280',
+    fontSize: 14,
+    lineHeight: 20,
+  },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 26,
@@ -203,6 +261,20 @@ const styles = StyleSheet.create({
   cardBody: {
     padding: 18,
     gap: 12,
+  },
+  categoryBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FEF3C7',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  categoryBadgeText: {
+    color: '#92400E',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   cardTopRow: {
     gap: 12,

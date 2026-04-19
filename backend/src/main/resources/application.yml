@@ -35,3 +35,4 @@ spoonacular:
   api-key: ${SPOONACULAR_API_KEY:2b32a7de2ddf4d64b3c41ac2d9820139}
   max-import-limit: ${SPOONACULAR_MAX_IMPORT_LIMIT:10}
   backup-file: ${SPOONACULAR_BACKUP_FILE:backups/spoonacular/spoonacular-recipes.json}
+  query-source-file: ${SPOONACULAR_QUERY_SOURCE_FILE:data/fndds/newfood.csv}

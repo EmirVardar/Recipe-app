@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 import { RecipeAccessBanner } from '@/components/recipe-access-banner';
 import { getRecipeDetail, type RecipeDetailResponse } from '@/lib/api';
@@ -22,6 +23,29 @@ function stripHtml(value: string | null | undefined) {
   }
 
   return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function formatCategoryLabel(category: string | null | undefined) {
+  switch (category) {
+    case 'breakfast':
+      return 'Breakfast';
+    case 'lunch':
+      return 'Lunch';
+    case 'dinner':
+      return 'Dinner';
+    case 'dessert':
+      return 'Dessert';
+    case 'snack':
+      return 'Snack';
+    case 'drink':
+      return 'Drink';
+    case 'soup':
+      return 'Soup';
+    case 'salad':
+      return 'Salad';
+    default:
+      return 'Main';
+  }
 }
 
 export default function RecipeDetailScreen() {
@@ -86,6 +110,25 @@ export default function RecipeDetailScreen() {
             />
 
             <Text style={styles.title}>{recipe.title}</Text>
+            <View style={styles.topMetaRow}>
+              <View style={styles.categoryBadge}>
+                <Text style={styles.categoryBadgeText}>{formatCategoryLabel(recipe.primaryCategory)}</Text>
+              </View>
+              <Pressable
+                style={styles.aiButton}
+                onPress={() =>
+                  router.push({
+                    pathname: '/assistant-chat',
+                    params: {
+                      recipeId: String(recipe.id),
+                      recipeTitle: recipe.title,
+                    },
+                  })
+                }>
+                <Ionicons name="sparkles-outline" size={16} color="#FFFFFF" />
+                <Text style={styles.aiButtonText}>AI&apos;a Sor</Text>
+              </Pressable>
+            </View>
             <Text style={styles.summary}>{stripHtml(recipe.summary) || 'Bu tarif icin ozet bilgisi bulunmuyor.'}</Text>
 
             <View style={styles.metrics}>
@@ -182,6 +225,40 @@ const styles = StyleSheet.create({
     color: '#111827',
     fontSize: 30,
     lineHeight: 36,
+    fontWeight: '800',
+  },
+  categoryBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FEF3C7',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  categoryBadgeText: {
+    color: '#92400E',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  topMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  aiButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#111827',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  aiButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
     fontWeight: '800',
   },
   summary: {

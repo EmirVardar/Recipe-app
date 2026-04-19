@@ -1,5 +1,9 @@
 package com.student.recipe.service;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -14,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.student.recipe.dto.SpoonacularImportResponseDto;
 import com.student.recipe.entity.Ingredient;
 import com.student.recipe.entity.Recipe;
@@ -29,42 +34,42 @@ import com.student.recipe.integration.spoonacular.SpoonacularClient;
 import com.student.recipe.integration.spoonacular.SpoonacularClient.SpoonacularIngredient;
 import com.student.recipe.integration.spoonacular.SpoonacularClient.SpoonacularRecipe;
 import com.student.recipe.repository.IngredientRepository;
+import com.student.recipe.repository.ImportQueryRepository;
 import com.student.recipe.repository.RecipeRepository;
+import com.student.recipe.entity.ImportQuery;
 
 @Service
 public class RecipeImportService {
 
-    private static final List<String> POPULAR_RECIPE_QUERIES = List.of(
-            "pizza",
-            "cheeseburger",
-            
-            "spaghetti",
-
-            "meatballs",
-            "lentil soup",
-            "rice pilaf",
-            "brownies",
-            "cookies"
-    );
+    private static final long SPOONACULAR_REQUEST_DELAY_MS = 10000L;
 
     private final SpoonacularClient spoonacularClient;
     private final RecipeRepository recipeRepository;
     private final IngredientRepository ingredientRepository;
+    private final ImportQueryRepository importQueryRepository;
+    private final ObjectMapper objectMapper;
     private final String apiKey;
     private final int maxImportLimit;
+    private final String backupFile;
 
     public RecipeImportService(
             SpoonacularClient spoonacularClient,
             RecipeRepository recipeRepository,
             IngredientRepository ingredientRepository,
+            ImportQueryRepository importQueryRepository,
+            ObjectMapper objectMapper,
             @Value("${spoonacular.api-key:}") String apiKey,
-            @Value("${spoonacular.max-import-limit:10}") int maxImportLimit
+            @Value("${spoonacular.max-import-limit:10}") int maxImportLimit,
+            @Value("${spoonacular.backup-file:}") String backupFile
     ) {
         this.spoonacularClient = spoonacularClient;
         this.recipeRepository = recipeRepository;
         this.ingredientRepository = ingredientRepository;
+        this.importQueryRepository = importQueryRepository;
+        this.objectMapper = objectMapper;
         this.apiKey = apiKey;
         this.maxImportLimit = maxImportLimit;
+        this.backupFile = backupFile;
     }
 
     @Transactional
@@ -75,15 +80,22 @@ public class RecipeImportService {
 
         int limit = normalizeLimit(requestedLimit);
         List<SpoonacularRecipe> recipes = fetchPopularRecipes(limit);
+        writeBackupFile(recipes);
+
+        return persistRecipes(limit, recipes);
+    }
+
+    private SpoonacularImportResponseDto persistRecipes(int limit, List<SpoonacularRecipe> recipes) {
 
         int created = 0;
         int updated = 0;
 
         for (SpoonacularRecipe externalRecipe : recipes) {
-            Recipe recipe = recipeRepository.findBySpoonacularId(externalRecipe.id())
-                    .orElseGet(Recipe::new);
+            if (recipeRepository.findBySpoonacularId(externalRecipe.id()).isPresent()) {
+                continue;
+            }
 
-            boolean isNewRecipe = recipe.getId() == null;
+            Recipe recipe = new Recipe();
             recipe.setSpoonacularId(externalRecipe.id());
             recipe.setTitle(defaultString(externalRecipe.title()));
             recipe.setImage(externalRecipe.image());
@@ -110,12 +122,7 @@ public class RecipeImportService {
             recipe.replaceNutrition(buildRecipeNutrition(externalRecipe.nutrition()));
 
             recipeRepository.save(recipe);
-
-            if (isNewRecipe) {
-                created++;
-            } else {
-                updated++;
-            }
+            created++;
         }
 
         return new SpoonacularImportResponseDto(limit, recipes.size(), created, updated);
@@ -123,36 +130,62 @@ public class RecipeImportService {
 
     private List<SpoonacularRecipe> fetchPopularRecipes(int limit) {
         Map<Long, SpoonacularRecipe> uniqueRecipes = new LinkedHashMap<>();
+        boolean firstRequest = true;
+        int requestCount = 0;
+        List<ImportQuery> pendingQueries = getPendingQueries();
 
-        for (String query : POPULAR_RECIPE_QUERIES) {
-            if (uniqueRecipes.size() >= limit) {
+        for (ImportQuery importQuery : pendingQueries) {
+            if (requestCount >= limit) {
                 break;
             }
 
+            requestCount++;
+
+            if (!firstRequest) {
+                waitBeforeNextSpoonacularRequest();
+            }
+
             List<SpoonacularRecipe> searchResults;
+            Instant attemptTime = Instant.now();
             try {
-                searchResults = spoonacularClient.searchRecipes(apiKey, query, 2);
+                importQuery.setLastAttemptAt(attemptTime);
+                importQueryRepository.save(importQuery);
+                searchResults = spoonacularClient.searchRecipes(apiKey, importQuery.getQueryText(), 1);
             } catch (Exception exception) {
-                // Skip broken queries instead of failing the whole import batch.
                 if (exception instanceof ResponseStatusException responseStatusException) {
                     HttpStatusCode statusCode = responseStatusException.getStatusCode();
+                    if (statusCode.value() == HttpStatus.PAYMENT_REQUIRED.value()) {
+                        // Daily point limit is exhausted; keep the query pending for a later retry.
+                        throw new ResponseStatusException(
+                                HttpStatus.PAYMENT_REQUIRED,
+                                "Spoonacular gunluk puan limiti doldu. Yarim kalan sorgulari daha sonra tekrar deneyebilirsin.",
+                                responseStatusException
+                        );
+                    }
+
+                    markQueryAsSearched(importQuery, attemptTime, false);
                     if (statusCode.value() >= 400 && statusCode.value() < 500) {
                         continue;
                     }
+                    continue;
                 }
+
+                markQueryAsSearched(importQuery, attemptTime, false);
                 continue;
             }
+            firstRequest = false;
+            boolean queryProducedValidRecipe = false;
 
             for (SpoonacularRecipe recipe : searchResults) {
                 if (recipe == null || recipe.id() == null || !hasMinimumRecipeData(recipe)) {
                     continue;
                 }
 
+                queryProducedValidRecipe = true;
                 uniqueRecipes.putIfAbsent(recipe.id(), recipe);
-                if (uniqueRecipes.size() >= limit) {
-                    break;
-                }
             }
+
+            markQueryAsSearched(importQuery, attemptTime, queryProducedValidRecipe);
         }
 
         return new ArrayList<>(uniqueRecipes.values());
@@ -315,5 +348,53 @@ public class RecipeImportService {
 
     private boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private void writeBackupFile(List<SpoonacularRecipe> recipes) {
+        if (backupFile == null || backupFile.isBlank()) {
+            return;
+        }
+
+        try {
+            Path backupPath = Path.of(backupFile);
+            Path parent = backupPath.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(backupPath.toFile(), recipes);
+        } catch (IOException exception) {
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to write Spoonacular backup file",
+                    exception
+            );
+        }
+    }
+
+    private void waitBeforeNextSpoonacularRequest() {
+        try {
+            Thread.sleep(SPOONACULAR_REQUEST_DELAY_MS);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Spoonacular request delay interrupted",
+                    exception
+            );
+        }
+    }
+
+    private List<ImportQuery> getPendingQueries() {
+        return importQueryRepository.findAllBySearchedFalseOrderByIdAsc();
+    }
+
+    private void markQueryAsSearched(ImportQuery importQuery, Instant attemptTime, boolean found) {
+        importQuery.setSearched(true);
+        importQuery.setFound(found);
+        importQuery.setSearchedAt(attemptTime);
+        importQuery.setCompleted(found);
+        importQuery.setCompletedAt(found ? attemptTime : null);
+        importQueryRepository.save(importQuery);
     }
 }

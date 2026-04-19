@@ -2,6 +2,7 @@ package com.student.recipe.service;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -24,19 +25,43 @@ import com.student.recipe.repository.RecipeRepository;
 @Service
 public class RecipeQueryService {
 
-    private final RecipeRepository recipeRepository;
+    private static final double HIGH_PROTEIN_THRESHOLD_GRAMS = 20.0;
 
-    public RecipeQueryService(RecipeRepository recipeRepository) {
+    private final RecipeRepository recipeRepository;
+    private final RecipeFavoriteService recipeFavoriteService;
+
+    public RecipeQueryService(RecipeRepository recipeRepository, RecipeFavoriteService recipeFavoriteService) {
         this.recipeRepository = recipeRepository;
+        this.recipeFavoriteService = recipeFavoriteService;
     }
 
     @Transactional(readOnly = true)
-    public List<RecipeListItemDto> listRecipes(String query) {
+    public List<RecipeListItemDto> listRecipes(
+            String email,
+            String query,
+            Double minCalories,
+            Double maxCalories,
+            Boolean highProtein,
+            Integer maxReadyInMinutes,
+            Boolean vegetarian,
+            Boolean vegan,
+            String category
+    ) {
         String normalizedQuery = query == null ? "" : query.trim();
+        String normalizedCategory = category == null ? "" : category.trim().toLowerCase();
+        Set<Long> favoriteRecipeIds = recipeFavoriteService.getFavoriteRecipeIds(email);
 
-        List<Recipe> recipes = normalizedQuery.isEmpty()
-                ? recipeRepository.findAllByOrderByCreatedAtDesc()
-                : recipeRepository.searchByTitleOrIngredient(normalizedQuery);
+        List<Recipe> recipes = recipeRepository.searchRecipes(
+                normalizedQuery,
+                minCalories,
+                maxCalories,
+                Boolean.TRUE.equals(highProtein),
+                HIGH_PROTEIN_THRESHOLD_GRAMS,
+                maxReadyInMinutes,
+                vegetarian,
+                vegan,
+                normalizedCategory
+        );
 
         return recipes
                 .stream()
@@ -44,9 +69,28 @@ public class RecipeQueryService {
                         recipe.getId(),
                         recipe.getTitle(),
                         recipe.getImage(),
+                        resolvePrimaryCategory(recipe),
                         recipe.getServings(),
                         recipe.getReadyInMinutes(),
-                        recipe.getRecipeNutrition() != null ? recipe.getRecipeNutrition().getCalories() : null
+                        recipe.getRecipeNutrition() != null ? recipe.getRecipeNutrition().getCalories() : null,
+                        favoriteRecipeIds.contains(recipe.getId())
+                ))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<RecipeListItemDto> listFavoriteRecipes(String email) {
+        return recipeFavoriteService.getFavoriteRecipes(email)
+                .stream()
+                .map(recipe -> new RecipeListItemDto(
+                        recipe.getId(),
+                        recipe.getTitle(),
+                        recipe.getImage(),
+                        resolvePrimaryCategory(recipe),
+                        recipe.getServings(),
+                        recipe.getReadyInMinutes(),
+                        recipe.getRecipeNutrition() != null ? recipe.getRecipeNutrition().getCalories() : null,
+                        true
                 ))
                 .toList();
     }
@@ -61,6 +105,7 @@ public class RecipeQueryService {
                 recipe.getSpoonacularId(),
                 recipe.getTitle(),
                 recipe.getImage(),
+                resolvePrimaryCategory(recipe),
                 recipe.getSummary(),
                 recipe.getInstructions(),
                 recipe.getServings(),
@@ -122,5 +167,47 @@ public class RecipeQueryService {
                 nutrition.getSugar(),
                 nutrition.getSodium()
         );
+    }
+
+    private String resolvePrimaryCategory(Recipe recipe) {
+        List<String> dishTypes = recipe.getRecipeTags().stream()
+                .filter(tag -> "dish_type".equals(tag.getTagType()))
+                .map(RecipeTag::getTagValue)
+                .toList();
+
+        if (dishTypes.isEmpty()) {
+            return "main";
+        }
+
+        if (containsCategory(dishTypes, "dessert")) {
+            return "dessert";
+        }
+        if (containsCategory(dishTypes, "salad")) {
+            return "salad";
+        }
+        if (containsCategory(dishTypes, "soup")) {
+            return "soup";
+        }
+        if (containsCategory(dishTypes, "breakfast")) {
+            return "breakfast";
+        }
+        if (containsCategory(dishTypes, "drink")) {
+            return "drink";
+        }
+        if (containsCategory(dishTypes, "snack")) {
+            return "snack";
+        }
+        if (containsCategory(dishTypes, "lunch")) {
+            return "lunch";
+        }
+        if (containsCategory(dishTypes, "dinner")) {
+            return "dinner";
+        }
+
+        return "main";
+    }
+
+    private boolean containsCategory(List<String> dishTypes, String expected) {
+        return dishTypes.stream().anyMatch(value -> value != null && value.equalsIgnoreCase(expected));
     }
 }
