@@ -7,9 +7,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.student.recipe.dto.AuthResponseDto;
-import com.student.recipe.dto.LoginRequestDto;
-import com.student.recipe.dto.RegisterRequestDto;
+import com.student.recipe.dto.auth.AuthResponseDto;
+import com.student.recipe.dto.auth.LoginRequestDto;
+import com.student.recipe.dto.auth.RegisterRequestDto;
 import com.student.recipe.entity.User;
 import com.student.recipe.repository.UserRepository;
 import com.student.recipe.security.JwtService;

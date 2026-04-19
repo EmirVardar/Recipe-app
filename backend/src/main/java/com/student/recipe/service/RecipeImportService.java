@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.student.recipe.dto.SpoonacularImportResponseDto;
+import com.student.recipe.dto.importing.SpoonacularImportResponseDto;
 import com.student.recipe.entity.Ingredient;
 import com.student.recipe.entity.Recipe;
 import com.student.recipe.entity.RecipeIngredient;

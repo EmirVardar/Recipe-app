@@ -7,8 +7,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.student.recipe.dto.HealthTransferRequestDto;
-import com.student.recipe.dto.HealthTransferResponseDto;
+import com.student.recipe.dto.health.HealthTransferRequestDto;
+import com.student.recipe.dto.health.HealthTransferResponseDto;
 import com.student.recipe.entity.HealthTransferRecord;
 import com.student.recipe.repository.HealthTransferRecordRepository;
 

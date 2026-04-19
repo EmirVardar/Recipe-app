@@ -10,10 +10,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.student.recipe.dto.DailyMealLogsResponseDto;
-import com.student.recipe.dto.MealLogItemCreateRequestDto;
-import com.student.recipe.dto.MealLogItemResponseDto;
-import com.student.recipe.dto.MealLogResponseDto;
+import com.student.recipe.dto.meal.DailyMealLogsResponseDto;
+import com.student.recipe.dto.meal.MealLogItemCreateRequestDto;
+import com.student.recipe.dto.meal.MealLogItemResponseDto;
+import com.student.recipe.dto.meal.MealLogResponseDto;
 import com.student.recipe.entity.FoodProduct;
 import com.student.recipe.entity.MealLog;
 import com.student.recipe.entity.MealLogItem;

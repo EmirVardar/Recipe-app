@@ -6,9 +6,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.student.recipe.dto.AuthResponseDto;
-import com.student.recipe.dto.LoginRequestDto;
-import com.student.recipe.dto.RegisterRequestDto;
+import com.student.recipe.dto.auth.AuthResponseDto;
+import com.student.recipe.dto.auth.LoginRequestDto;
+import com.student.recipe.dto.auth.RegisterRequestDto;
 import com.student.recipe.service.AuthService;
 
 @RestController

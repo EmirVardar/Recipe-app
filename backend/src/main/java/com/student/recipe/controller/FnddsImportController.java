@@ -5,8 +5,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.student.recipe.dto.FnddsFoodProductImportResponseDto;
-import com.student.recipe.dto.FnddsRawImportResponseDto;
+import com.student.recipe.dto.importing.FnddsFoodProductImportResponseDto;
+import com.student.recipe.dto.importing.FnddsRawImportResponseDto;
 import com.student.recipe.service.FnddsImportService;
 
 @RestController

@@ -10,8 +10,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.student.recipe.dto.RecipeDetailDto;
-import com.student.recipe.dto.RecipeListItemDto;
+import com.student.recipe.dto.recipe.RecipeDetailDto;
+import com.student.recipe.dto.recipe.RecipeListItemDto;
 import com.student.recipe.service.RecipeQueryService;
 
 @RestController

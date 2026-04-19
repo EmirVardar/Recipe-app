@@ -14,9 +14,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PathVariable;
 
-import com.student.recipe.dto.DailyMealLogsResponseDto;
-import com.student.recipe.dto.MealLogItemCreateRequestDto;
-import com.student.recipe.dto.MealLogItemResponseDto;
+import com.student.recipe.dto.meal.DailyMealLogsResponseDto;
+import com.student.recipe.dto.meal.MealLogItemCreateRequestDto;
+import com.student.recipe.dto.meal.MealLogItemResponseDto;
 import com.student.recipe.service.MealTrackingService;
 
 @RestController

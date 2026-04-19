@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { chatWithAssistant } from '@/lib/api';
@@ -22,8 +22,12 @@ type ChatMessage = {
   text: string;
 };
 
-export default function AssistantChatScreen() {
-  const params = useLocalSearchParams<{ recipeId?: string; recipeTitle?: string }>();
+const QUICK_PROMPTS = [
+  'Suggest a breakfast that matches my goal',
+  'Suggest a snack that respects my allergies',
+];
+
+export default function AssistantLabScreen() {
   const { accessToken, isLoggedIn } = useAuth();
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -31,17 +35,15 @@ export default function AssistantChatScreen() {
   const [errorMessage, setErrorMessage] = useState('');
   const scrollRef = useRef<ScrollView | null>(null);
 
-  const recipeTitle = typeof params.recipeTitle === 'string' ? params.recipeTitle : 'this recipe';
-
   useEffect(() => {
     setMessages([
       {
         id: 'welcome',
         role: 'assistant',
-        text: `You can ask anything about ${recipeTitle}. I can help with ingredients, steps, cooking logic, or healthier alternatives.`,
+        text: 'I can use your goal, activity level, allergies, intolerances, and food preferences to give more personalized nutrition suggestions.',
       },
     ]);
-  }, [recipeTitle]);
+  }, []);
 
   const handleSend = async (suggestedMessage?: string) => {
     const nextInput = (suggestedMessage ?? input).trim();
@@ -61,12 +63,7 @@ export default function AssistantChatScreen() {
     setErrorMessage('');
 
     try {
-      const recipeContext =
-        params.recipeId && recipeTitle
-          ? `Recipe id: ${params.recipeId}. Recipe title: ${recipeTitle}. The user is asking about this recipe.\nQuestion: ${nextInput}`
-          : nextInput;
-
-      const response = await chatWithAssistant(accessToken, recipeContext);
+      const response = await chatWithAssistant(accessToken, nextInput);
       const assistantParts = [response.answer, ...(response.warnings ?? []), ...(response.suggestions ?? [])]
         .filter((part) => part && part.trim().length > 0)
         .join('\n\n');
@@ -89,22 +86,23 @@ export default function AssistantChatScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <Stack.Screen options={{ title: 'Ask AI', headerShown: true }} />
+      <Stack.Screen options={{ title: 'AI Test Center', headerShown: true }} />
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
         <View style={styles.headerCard}>
-          <Text style={styles.eyebrow}>Recipe Assistant</Text>
-          <Text style={styles.title}>{recipeTitle}</Text>
-          <Text style={styles.subtitle}>Use this screen to ask questions about the recipe and get quick guidance.</Text>
+          <Text style={styles.eyebrow}>Profile Assistant</Text>
+          <Text style={styles.title}>AI Test Center</Text>
+          <Text style={styles.subtitle}>Use this screen to test how the assistant responds with your saved profile context.</Text>
         </View>
 
         <ScrollView
           ref={scrollRef}
+          automaticallyAdjustContentInsets={false}
+          contentInsetAdjustmentBehavior="never"
           contentContainerStyle={styles.messages}
-          keyboardShouldPersistTaps="handled"
-          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
+          keyboardShouldPersistTaps="handled">
           {messages.map((message) => (
             <View
               key={message.id}
@@ -134,24 +132,25 @@ export default function AssistantChatScreen() {
         </ScrollView>
 
         <View style={styles.quickRow}>
-          <Pressable style={styles.quickChip} onPress={() => void handleSend('How can I make this recipe healthier?')}>
-            <Text style={styles.quickChipText}>Make it healthier</Text>
-          </Pressable>
-          <Pressable style={styles.quickChip} onPress={() => void handleSend('What pairs well with this recipe?')}>
-            <Text style={styles.quickChipText}>What goes with it?</Text>
-          </Pressable>
+          {QUICK_PROMPTS.map((prompt) => (
+            <Pressable key={prompt} style={styles.quickChip} onPress={() => void handleSend(prompt)}>
+              <Text style={styles.quickChipText}>{prompt}</Text>
+            </Pressable>
+          ))}
         </View>
 
         <View style={styles.inputRow}>
           <TextInput
             value={input}
             onChangeText={setInput}
-            placeholder="Write your question..."
+            placeholder="Ask about your nutrition plan..."
             placeholderTextColor="#9CA3AF"
             style={styles.input}
             multiline
           />
-          <Pressable style={[styles.sendButton, loading ? styles.sendButtonDisabled : null]} onPress={() => void handleSend()}>
+          <Pressable
+            style={[styles.sendButton, loading ? styles.sendButtonDisabled : null]}
+            onPress={() => void handleSend()}>
             <Text style={styles.sendButtonText}>{loading ? '...' : 'Send'}</Text>
           </Pressable>
         </View>
@@ -194,6 +193,7 @@ const styles = StyleSheet.create({
   },
   messages: {
     paddingHorizontal: 18,
+    paddingTop: 0,
     paddingBottom: 16,
     gap: 12,
   },
@@ -279,39 +279,37 @@ const styles = StyleSheet.create({
     color: '#9A3412',
     fontSize: 12,
     fontWeight: '700',
+    textAlign: 'center',
   },
   inputRow: {
+    padding: 18,
+    paddingTop: 10,
     flexDirection: 'row',
-    alignItems: 'flex-end',
     gap: 10,
-    paddingHorizontal: 18,
-    paddingBottom: 18,
-    paddingTop: 8,
-    backgroundColor: '#F8FAFC',
+    alignItems: 'flex-end',
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
   },
   input: {
     flex: 1,
-    minHeight: 54,
-    maxHeight: 120,
-    backgroundColor: '#FFFFFF',
+    minHeight: 50,
+    maxHeight: 140,
+    backgroundColor: '#F3F4F6',
     borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
     paddingHorizontal: 14,
-    paddingVertical: 14,
-    fontSize: 15,
+    paddingVertical: 12,
     color: '#111827',
+    fontSize: 15,
   },
   sendButton: {
     backgroundColor: '#111827',
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
   },
   sendButtonDisabled: {
-    opacity: 0.7,
+    opacity: 0.6,
   },
   sendButtonText: {
     color: '#FFFFFF',
