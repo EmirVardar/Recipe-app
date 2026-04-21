@@ -1,0 +1,14 @@
+services:
+  chromadb:
+    image: chromadb/chroma:0.5.23
+    container_name: recipe-chroma
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - ALLOW_RESET=true
+    restart: unless-stopped
+
+volumes:
+  chroma_data:

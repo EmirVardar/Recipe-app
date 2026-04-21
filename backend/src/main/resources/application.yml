@@ -30,6 +30,12 @@ jwt:
 openai:
   api-key: ${OPENAI_API_KEY:}
   chat-model: ${OPENAI_CHAT_MODEL:gpt-4o-mini}
+  embedding-model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+
+
+chroma:
+  url: ${CHROMA_URL:http://localhost:8000}
+
 
 spoonacular:
   api-key: ${SPOONACULAR_API_KEY:2b32a7de2ddf4d64b3c41ac2d9820139}
