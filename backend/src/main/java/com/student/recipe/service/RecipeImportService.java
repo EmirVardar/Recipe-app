@@ -41,7 +41,7 @@ import com.student.recipe.entity.ImportQuery;
 @Service
 public class RecipeImportService {
 
-    private static final long SPOONACULAR_REQUEST_DELAY_MS = 10000L;
+    private static final long SPOONACULAR_REQUEST_DELAY_MS = 2000L;
 
     private final SpoonacularClient spoonacularClient;
     private final RecipeRepository recipeRepository;
@@ -80,7 +80,7 @@ public class RecipeImportService {
 
         int limit = normalizeLimit(requestedLimit);
         List<SpoonacularRecipe> recipes = fetchPopularRecipes(limit);
-        writeBackupFile(recipes);
+
 
         return persistRecipes(limit, recipes);
     }
@@ -150,7 +150,7 @@ public class RecipeImportService {
             try {
                 importQuery.setLastAttemptAt(attemptTime);
                 importQueryRepository.save(importQuery);
-                searchResults = spoonacularClient.searchRecipes(apiKey, importQuery.getQueryText(), 1);
+                searchResults = spoonacularClient.searchRecipes(apiKey, importQuery.getQueryText(), 10);
             } catch (Exception exception) {
                 if (exception instanceof ResponseStatusException responseStatusException) {
                     HttpStatusCode statusCode = responseStatusException.getStatusCode();
@@ -292,7 +292,7 @@ public class RecipeImportService {
         }
 
         if (ingredient == null && !normalizedName.isBlank()) {
-            ingredient = ingredientRepository.findByNameIgnoreCase(normalizedName).orElse(null);
+            ingredient = ingredientRepository.findFirstByNameIgnoreCase(normalizedName).orElse(null);
         }
 
         if (ingredient == null) {
@@ -350,27 +350,7 @@ public class RecipeImportService {
         return value == null || value.trim().isEmpty();
     }
 
-    private void writeBackupFile(List<SpoonacularRecipe> recipes) {
-        if (backupFile == null || backupFile.isBlank()) {
-            return;
-        }
 
-        try {
-            Path backupPath = Path.of(backupFile);
-            Path parent = backupPath.getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
-            }
-
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(backupPath.toFile(), recipes);
-        } catch (IOException exception) {
-            throw new ResponseStatusException(
-                    HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to write Spoonacular backup file",
-                    exception
-            );
-        }
-    }
 
     private void waitBeforeNextSpoonacularRequest() {
         try {

@@ -8,6 +8,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.student.recipe.dto.assistant.AssistantChatResponseDto;
 import com.student.recipe.dto.assistant.UserAiProfileContextDto;
+import com.student.recipe.entity.Conversation;
+import com.student.recipe.entity.ConversationMessage;
+import com.student.recipe.entity.enums.ConversationMessageRole;
+import com.student.recipe.repository.UserRepository;
 import com.student.recipe.vector.DocumentMatch;
 import com.student.recipe.vector.EmbeddingVectorService;
 
@@ -15,6 +19,8 @@ import com.student.recipe.vector.EmbeddingVectorService;
 public class AssistantChatService {
 
     private static final double RELEVANCE_THRESHOLD = 0.75;
+    private static final int HISTORY_LIMIT = 6;
+    private static final String DEFAULT_CONVERSATION_KEY = "default";
 
     private static final String SYSTEM_PROMPT = """
             You are a personalized nutrition assistant.
@@ -28,23 +34,30 @@ public class AssistantChatService {
             - Use the CONTEXT section as your primary source. Do not fabricate recipe details.
             - Do not provide medical diagnoses or medication dosage advice.
             - If clinically urgent, advise contacting a doctor.
+            - Use conversation history to maintain context across messages.
             """;
 
     private final OpenAiService openAiService;
     private final UserAiProfileContextService userAiProfileContextService;
     private final UserAiContextPromptBuilder userAiContextPromptBuilder;
     private final EmbeddingVectorService vectorService;
+    private final ConversationMemoryService conversationMemoryService;
+    private final UserRepository userRepository;
 
     public AssistantChatService(
             OpenAiService openAiService,
             UserAiProfileContextService userAiProfileContextService,
             UserAiContextPromptBuilder userAiContextPromptBuilder,
-            EmbeddingVectorService vectorService
+            EmbeddingVectorService vectorService,
+            ConversationMemoryService conversationMemoryService,
+            UserRepository userRepository
     ) {
         this.openAiService = openAiService;
         this.userAiProfileContextService = userAiProfileContextService;
         this.userAiContextPromptBuilder = userAiContextPromptBuilder;
         this.vectorService = vectorService;
+        this.conversationMemoryService = conversationMemoryService;
+        this.userRepository = userRepository;
     }
 
     public AssistantChatResponseDto chat(String userEmail, String message) {
@@ -52,20 +65,30 @@ public class AssistantChatService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "message is required");
         }
 
-        // 1) Kullanıcı profilini çek
+        // 1) Kullanıcı ID'sini çek
+        Long userId = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"))
+                .getId();
+
+        // 2) Konuşma geçmişini çek
+        Conversation conversation = conversationMemoryService.getOrCreate(userId, DEFAULT_CONVERSATION_KEY);
+        List<ConversationMessage> history = conversationMemoryService.getLastMessages(conversation.getId(), HISTORY_LIMIT);
+        String historyBlock = formatHistory(history);
+
+        // 3) Kullanıcı profilini çek
         UserAiProfileContextDto context = userAiProfileContextService.buildContext(userEmail);
         String profileContext = userAiContextPromptBuilder.buildProfileParagraph(context);
 
-        // 2) Semantic search
+        // 4) Semantic search
         List<DocumentMatch> matches = vectorService.findRelevant(message.trim(), 5);
-
-        // 3) RAG context oluştur
         String ragContext = buildRagContext(matches);
 
-        // 4) Final prompt
-        String systemPrompt = SYSTEM_PROMPT;
+        // 5) Final prompt
         String userPrompt = """
                 === USER PROFILE ===
+                %s
+                
+                === CONVERSATION HISTORY ===
                 %s
                 
                 === RELEVANT RECIPES FROM DATABASE ===
@@ -75,15 +98,36 @@ public class AssistantChatService {
                 %s
                 
                 Answer based on the context above. Tailor the response to the user profile.
-                """.formatted(profileContext, ragContext, message.trim());
+                """.formatted(
+                profileContext,
+                historyBlock.isBlank() ? "(No previous conversation)" : historyBlock,
+                ragContext,
+                message.trim()
+        );
 
-        String answer = openAiService.chat(systemPrompt, userPrompt);
+        String answer = openAiService.chat(SYSTEM_PROMPT, userPrompt);
+
+        // 6) Konuşmayı kaydet
+        conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
+        conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
 
         return new AssistantChatResponseDto(
                 answer,
                 List.of("This response is for general informational purposes and does not replace medical advice."),
                 List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian.")
         );
+    }
+
+    private String formatHistory(List<ConversationMessage> history) {
+        if (history == null || history.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (ConversationMessage m : history) {
+            String role = m.getRole() == ConversationMessageRole.USER ? "User" : "Assistant";
+            String content = m.getContent() == null ? "" : m.getContent().trim();
+            if (content.length() > 500) content = content.substring(0, 500) + "...";
+            sb.append(role).append(": ").append(content).append("\n");
+        }
+        return sb.toString().trim();
     }
 
     private String buildRagContext(List<DocumentMatch> matches) {

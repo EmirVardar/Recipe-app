@@ -10,5 +10,5 @@ public interface IngredientRepository extends JpaRepository<Ingredient, Long> {
 
     Optional<Ingredient> findBySpoonacularId(Long spoonacularId);
 
-    Optional<Ingredient> findByNameIgnoreCase(String name);
+    Optional<Ingredient> findFirstByNameIgnoreCase(String name);
 }
