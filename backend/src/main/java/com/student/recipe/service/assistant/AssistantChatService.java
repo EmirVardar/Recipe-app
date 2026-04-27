@@ -12,6 +12,7 @@ import com.student.recipe.entity.Conversation;
 import com.student.recipe.entity.ConversationMessage;
 import com.student.recipe.entity.enums.ConversationMessageRole;
 import com.student.recipe.repository.UserRepository;
+import com.student.recipe.service.MealTrackingService;
 import com.student.recipe.vector.DocumentMatch;
 import com.student.recipe.vector.EmbeddingVectorService;
 
@@ -35,6 +36,7 @@ public class AssistantChatService {
             - Do not provide medical diagnoses or medication dosage advice.
             - If clinically urgent, advise contacting a doctor.
             - Use conversation history to maintain context across messages.
+            - Use TODAY'S NUTRITION LOG to give personalized daily feedback.
             """;
 
     private final OpenAiService openAiService;
@@ -43,6 +45,7 @@ public class AssistantChatService {
     private final EmbeddingVectorService vectorService;
     private final ConversationMemoryService conversationMemoryService;
     private final UserRepository userRepository;
+    private final MealTrackingService mealTrackingService;
 
     public AssistantChatService(
             OpenAiService openAiService,
@@ -50,7 +53,8 @@ public class AssistantChatService {
             UserAiContextPromptBuilder userAiContextPromptBuilder,
             EmbeddingVectorService vectorService,
             ConversationMemoryService conversationMemoryService,
-            UserRepository userRepository
+            UserRepository userRepository,
+            MealTrackingService mealTrackingService
     ) {
         this.openAiService = openAiService;
         this.userAiProfileContextService = userAiProfileContextService;
@@ -58,6 +62,7 @@ public class AssistantChatService {
         this.vectorService = vectorService;
         this.conversationMemoryService = conversationMemoryService;
         this.userRepository = userRepository;
+        this.mealTrackingService = mealTrackingService;
     }
 
     public AssistantChatResponseDto chat(String userEmail, String message) {
@@ -79,13 +84,18 @@ public class AssistantChatService {
         UserAiProfileContextDto context = userAiProfileContextService.buildContext(userEmail);
         String profileContext = userAiContextPromptBuilder.buildProfileParagraph(context);
 
-        // 4) Semantic search
+        // 4) Günlük kalori bilgisi
+        String dailyNutritionContext = buildDailyNutritionContext(userEmail);
+
+        // 5) Semantic search
         List<DocumentMatch> matches = vectorService.findRelevant(message.trim(), 5);
         String ragContext = buildRagContext(matches);
 
-        // 5) Final prompt
+        // 6) Final prompt
         String userPrompt = """
                 === USER PROFILE ===
+                %s
+                
                 %s
                 
                 === CONVERSATION HISTORY ===
@@ -100,6 +110,7 @@ public class AssistantChatService {
                 Answer based on the context above. Tailor the response to the user profile.
                 """.formatted(
                 profileContext,
+                dailyNutritionContext,
                 historyBlock.isBlank() ? "(No previous conversation)" : historyBlock,
                 ragContext,
                 message.trim()
@@ -107,7 +118,7 @@ public class AssistantChatService {
 
         String answer = openAiService.chat(SYSTEM_PROMPT, userPrompt);
 
-        // 6) Konuşmayı kaydet
+        // 7) Konuşmayı kaydet
         conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
         conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
 
@@ -116,6 +127,43 @@ public class AssistantChatService {
                 List.of("This response is for general informational purposes and does not replace medical advice."),
                 List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian.")
         );
+    }
+
+    private String buildDailyNutritionContext(String userEmail) {
+        try {
+            var dailyMeals = mealTrackingService.getDailyMeals(userEmail, null);
+            if (dailyMeals == null) return "";
+
+            StringBuilder sb = new StringBuilder();
+            sb.append(String.format("""
+                === TODAY'S NUTRITION LOG ===
+                Total calories consumed: %.0f kcal
+                Total protein: %.1f g
+                Total carbs: %.1f g
+                Total fat: %.1f g
+                """,
+                    dailyMeals.totalCalories() != null ? dailyMeals.totalCalories() : 0.0,
+                    dailyMeals.totalProtein() != null ? dailyMeals.totalProtein() : 0.0,
+                    dailyMeals.totalCarbs() != null ? dailyMeals.totalCarbs() : 0.0,
+                    dailyMeals.totalFat() != null ? dailyMeals.totalFat() : 0.0
+            ));
+
+            if (dailyMeals.meals() != null) {
+                for (var meal : dailyMeals.meals()) {
+                    sb.append(meal.mealType()).append(":\n");
+                    if (meal.items() != null) {
+                        for (var item : meal.items()) {
+                            sb.append("  - ").append(item.sourceName())
+                                    .append(" (").append(String.format("%.0f", item.calories())).append(" kcal)\n");
+                        }
+                    }
+                }
+            }
+
+            return sb.toString();
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     private String formatHistory(List<ConversationMessage> history) {

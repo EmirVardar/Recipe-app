@@ -2,8 +2,9 @@ package com.student.recipe.dto.meal;
 
 public record MealLogItemResponseDto(
         Long id,
-        Long foodProductId,
-        String foodName,
+        Long sourceId,
+        String sourceName,
+        String sourceType,
         Double quantity,
         String unitType,
         Double gramEquivalent,

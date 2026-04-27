@@ -2,6 +2,7 @@ package com.student.recipe.controller;
 
 import java.time.LocalDate;
 
+import com.student.recipe.dto.meal.RecipeMealLogItemCreateRequestDto;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,7 +14,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PathVariable;
-
 import com.student.recipe.dto.meal.DailyMealLogsResponseDto;
 import com.student.recipe.dto.meal.MealLogItemCreateRequestDto;
 import com.student.recipe.dto.meal.MealLogItemResponseDto;
@@ -61,5 +61,22 @@ public class MealController {
     ) {
         mealTrackingService.deleteMealItem(authentication.getName(), itemId);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/items/recipe")
+    public ResponseEntity<MealLogItemResponseDto> addRecipeMealItem(
+            Authentication authentication,
+            @RequestBody RecipeMealLogItemCreateRequestDto request
+    ) {
+        return ResponseEntity.ok(mealTrackingService.addRecipeMealItem(authentication.getName(), request));
+    }
+
+    @PutMapping("/items/{itemId}/recipe")
+    public ResponseEntity<MealLogItemResponseDto> updateRecipeMealItem(
+            Authentication authentication,
+            @PathVariable Long itemId,
+            @RequestBody RecipeMealLogItemCreateRequestDto request
+    ) {
+        return ResponseEntity.ok(mealTrackingService.updateRecipeMealItem(authentication.getName(), itemId, request));
     }
 }

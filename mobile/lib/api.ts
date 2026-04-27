@@ -183,10 +183,20 @@ export type MealLogItemCreateRequest = {
   unitType: string;
 };
 
+export type RecipeMealLogItemCreateRequest = {
+  logDate?: string;
+  mealType: string;
+  recipeId: number;
+  servings: number;
+};
+
 export type MealLogItemResponse = {
   id: number;
-  foodProductId: number;
-  foodName: string;
+  foodProductId: number | null;
+  foodName: string | null;
+  sourceId: number | null;
+  sourceName: string | null;
+  sourceType: 'FOOD' | 'RECIPE' | 'UNKNOWN';
   quantity: number;
   unitType: string;
   gramEquivalent: number;
@@ -464,8 +474,32 @@ export async function addMealItem(accessToken: string, payload: MealLogItemCreat
   });
 }
 
+export async function addRecipeMealItem(accessToken: string, payload: RecipeMealLogItemCreateRequest) {
+  return request<MealLogItemResponse>('/api/meals/items/recipe', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function updateMealItem(accessToken: string, itemId: number, payload: MealLogItemCreateRequest) {
   return request<MealLogItemResponse>(`/api/meals/items/${itemId}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateRecipeMealItem(
+  accessToken: string,
+  itemId: number,
+  payload: RecipeMealLogItemCreateRequest
+) {
+  return request<MealLogItemResponse>(`/api/meals/items/${itemId}/recipe`, {
     method: 'PUT',
     headers: {
       Authorization: `Bearer ${accessToken}`,

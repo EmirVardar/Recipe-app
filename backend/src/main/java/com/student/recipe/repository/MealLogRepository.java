@@ -14,6 +14,6 @@ public interface MealLogRepository extends JpaRepository<MealLog, Long> {
 
     Optional<MealLog> findByUserIdAndLogDateAndMealType(Long userId, LocalDate logDate, MealType mealType);
 
-    @EntityGraph(attributePaths = {"items", "items.foodProduct"})
+    @EntityGraph(attributePaths = {"items", "items.foodProduct", "items.recipe"})
     List<MealLog> findAllByUserIdAndLogDateOrderByCreatedAtAsc(Long userId, LocalDate logDate);
 }

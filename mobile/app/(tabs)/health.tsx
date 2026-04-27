@@ -13,16 +13,20 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
+  addRecipeMealItem,
   addMealItem,
   deleteMealItem,
   getDailyMeals,
   getHealthTransferRecords,
   searchFoodProducts,
+  searchRecipes,
   updateMealItem,
+  updateRecipeMealItem,
   type DailyMealLogsResponse,
   type FoodProductSearchItemResponse,
   type HealthTransferResponse,
   type MealLogItemResponse,
+  type RecipeListItemResponse,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
@@ -36,6 +40,11 @@ const MEAL_TYPES = [
 const UNIT_TYPES = [
   { key: 'GRAM', label: 'Gram' },
   { key: 'PIECE', label: 'Tane' },
+] as const;
+
+const SEARCH_TYPES = [
+  { key: 'FOOD', label: 'Urun' },
+  { key: 'RECIPE', label: 'Recipe' },
 ] as const;
 
 function formatNumber(value: number | null | undefined, suffix = '') {
@@ -83,18 +92,35 @@ function getUnitLabel(unitType: string) {
   return UNIT_TYPES.find((item) => item.key === unitType)?.label ?? unitType;
 }
 
+function getMealItemTitle(item: MealLogItemResponse) {
+  return item.sourceName ?? item.foodName ?? 'Bilinmeyen oge';
+}
+
+function getMealItemAdjustLabel(item: MealLogItemResponse) {
+  if (item.sourceType === 'RECIPE') {
+    return 'Hizli duzenle (0.5 porsiyon)';
+  }
+
+  return `Hizli duzenle (${item.unitType === 'PIECE' ? '1 tane' : '25 g'})`;
+}
+
 export default function ShoppingListTabScreen() {
   const { accessToken, isLoggedIn } = useAuth();
   const [records, setRecords] = useState<HealthTransferResponse[]>([]);
   const [dailyMeals, setDailyMeals] = useState<DailyMealLogsResponse | null>(null);
   const [foodResults, setFoodResults] = useState<FoodProductSearchItemResponse[]>([]);
+  const [recipeResults, setRecipeResults] = useState<RecipeListItemResponse[]>([]);
+  const [searchType, setSearchType] = useState<(typeof SEARCH_TYPES)[number]['key']>('FOOD');
   const [foodQuery, setFoodQuery] = useState('');
+  const [recipeQuery, setRecipeQuery] = useState('');
   const [selectedMealType, setSelectedMealType] = useState<(typeof MEAL_TYPES)[number]['key']>('BREAKFAST');
   const [selectedUnitType, setSelectedUnitType] = useState<(typeof UNIT_TYPES)[number]['key']>('GRAM');
-  const [quantityInput, setQuantityInput] = useState('100');
+  const [foodQuantityInput, setFoodQuantityInput] = useState('100');
+  const [recipeServingsInput, setRecipeServingsInput] = useState('1');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [searchLoading, setSearchLoading] = useState(false);
+  const [foodSearchLoading, setFoodSearchLoading] = useState(false);
+  const [recipeSearchLoading, setRecipeSearchLoading] = useState(false);
   const [submittingItemId, setSubmittingItemId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -132,11 +158,11 @@ export default function ShoppingListTabScreen() {
     const normalizedQuery = foodQuery.trim();
     if (!isLoggedIn || normalizedQuery.length < 2) {
       setFoodResults([]);
-      setSearchLoading(false);
+      setFoodSearchLoading(false);
       return;
     }
 
-    setSearchLoading(true);
+    setFoodSearchLoading(true);
     const timeoutId = setTimeout(() => {
       void searchFoodProducts(normalizedQuery, 10)
         .then((results) => {
@@ -147,12 +173,38 @@ export default function ShoppingListTabScreen() {
           setErrorMessage(error instanceof Error ? error.message : 'Urun arama basarisiz oldu.');
         })
         .finally(() => {
-          setSearchLoading(false);
+          setFoodSearchLoading(false);
         });
     }, 300);
 
     return () => clearTimeout(timeoutId);
   }, [foodQuery, isLoggedIn]);
+
+  useEffect(() => {
+    const normalizedQuery = recipeQuery.trim();
+    if (!isLoggedIn || !accessToken || normalizedQuery.length < 2) {
+      setRecipeResults([]);
+      setRecipeSearchLoading(false);
+      return;
+    }
+
+    setRecipeSearchLoading(true);
+    const timeoutId = setTimeout(() => {
+      void searchRecipes(accessToken, normalizedQuery)
+        .then((results) => {
+          setRecipeResults(results);
+          setErrorMessage('');
+        })
+        .catch((error) => {
+          setErrorMessage(error instanceof Error ? error.message : 'Recipe arama basarisiz oldu.');
+        })
+        .finally(() => {
+          setRecipeSearchLoading(false);
+        });
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [accessToken, isLoggedIn, recipeQuery]);
 
   const latestRecord = records[0] ?? null;
   const dailyLatestRecords = useMemo(() => {
@@ -179,11 +231,13 @@ export default function ShoppingListTabScreen() {
   );
   const totalSteps = useMemo(() => dailyLatestRecords.reduce((sum, item) => sum + item.adim, 0), [dailyLatestRecords]);
 
-  const parsedQuantity = Number(quantityInput.replace(',', '.'));
-  const quantityValid = Number.isFinite(parsedQuantity) && parsedQuantity > 0;
+  const parsedFoodQuantity = Number(foodQuantityInput.replace(',', '.'));
+  const parsedRecipeServings = Number(recipeServingsInput.replace(',', '.'));
+  const foodQuantityValid = Number.isFinite(parsedFoodQuantity) && parsedFoodQuantity > 0;
+  const recipeServingsValid = Number.isFinite(parsedRecipeServings) && parsedRecipeServings > 0;
 
   const handleAddFood = async (product: FoodProductSearchItemResponse) => {
-    if (!accessToken || !quantityValid || submittingItemId != null) {
+    if (!accessToken || !foodQuantityValid || submittingItemId != null) {
       return;
     }
 
@@ -192,7 +246,7 @@ export default function ShoppingListTabScreen() {
       await addMealItem(accessToken, {
         mealType: selectedMealType,
         foodProductId: product.id,
-        quantity: parsedQuantity,
+        quantity: parsedFoodQuantity,
         unitType: selectedUnitType,
       });
       setFoodQuery('');
@@ -205,12 +259,34 @@ export default function ShoppingListTabScreen() {
     }
   };
 
+  const handleAddRecipe = async (recipe: RecipeListItemResponse) => {
+    if (!accessToken || !recipeServingsValid || submittingItemId != null) {
+      return;
+    }
+
+    setSubmittingItemId(recipe.id);
+    try {
+      await addRecipeMealItem(accessToken, {
+        mealType: selectedMealType,
+        recipeId: recipe.id,
+        servings: parsedRecipeServings,
+      });
+      setRecipeQuery('');
+      setRecipeResults([]);
+      await loadDashboard();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Recipe ogune eklenemedi.');
+    } finally {
+      setSubmittingItemId(null);
+    }
+  };
+
   const handleUpdateItem = async (mealType: string, item: MealLogItemResponse, direction: 'increase' | 'decrease') => {
     if (!accessToken || submittingItemId != null) {
       return;
     }
 
-    const step = item.unitType === 'PIECE' ? 1 : 25;
+    const step = item.sourceType === 'RECIPE' ? 0.5 : item.unitType === 'PIECE' ? 1 : 25;
     const nextQuantity = direction === 'increase' ? item.quantity + step : item.quantity - step;
     if (nextQuantity <= 0) {
       return;
@@ -218,12 +294,28 @@ export default function ShoppingListTabScreen() {
 
     setSubmittingItemId(item.id);
     try {
-      await updateMealItem(accessToken, item.id, {
-        mealType,
-        foodProductId: item.foodProductId,
-        quantity: nextQuantity,
-        unitType: item.unitType,
-      });
+      if (item.sourceType === 'RECIPE') {
+        if (item.sourceId == null) {
+          throw new Error('Recipe bilgisi eksik.');
+        }
+
+        await updateRecipeMealItem(accessToken, item.id, {
+          mealType,
+          recipeId: item.sourceId,
+          servings: nextQuantity,
+        });
+      } else {
+        if (item.foodProductId == null) {
+          throw new Error('Urun bilgisi eksik.');
+        }
+
+        await updateMealItem(accessToken, item.id, {
+          mealType,
+          foodProductId: item.foodProductId,
+          quantity: nextQuantity,
+          unitType: item.unitType,
+        });
+      }
       await loadDashboard();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Ogun guncellenemedi.');
@@ -257,7 +349,7 @@ export default function ShoppingListTabScreen() {
           <Text style={styles.eyebrow}>ReciPulse Health</Text>
           <Text style={styles.title}>Saglik ve Ogun Takibi</Text>
           <Text style={styles.subtitle}>
-            Gunluk ogunlerini urun bazli ekle, makrolari otomatik hesapla ve saglik verilerinle ayni ekranda takip et.
+            Gunluk ogunlerini urun ve recipe bazli ekle, makrolari otomatik hesapla ve saglik verilerinle ayni ekranda takip et.
           </Text>
         </View>
 
@@ -306,48 +398,83 @@ export default function ShoppingListTabScreen() {
                 })}
               </ScrollView>
 
+              <View style={styles.modeSwitch}>
+                {SEARCH_TYPES.map((item) => {
+                  const active = searchType === item.key;
+                  return (
+                    <Pressable
+                      key={item.key}
+                      style={[styles.modeButton, active ? styles.modeButtonActive : null]}
+                      onPress={() => setSearchType(item.key)}>
+                      <Text style={[styles.modeButtonText, active ? styles.modeButtonTextActive : null]}>{item.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
               <View style={styles.controlsRow}>
                 <TextInput
-                  value={quantityInput}
-                  onChangeText={setQuantityInput}
+                  value={searchType === 'FOOD' ? foodQuantityInput : recipeServingsInput}
+                  onChangeText={searchType === 'FOOD' ? setFoodQuantityInput : setRecipeServingsInput}
                   keyboardType="decimal-pad"
-                  placeholder={selectedUnitType === 'GRAM' ? '100' : '2'}
+                  placeholder={searchType === 'FOOD' ? (selectedUnitType === 'GRAM' ? '100' : '2') : '1'}
                   placeholderTextColor="#94A3B8"
                   style={styles.quantityInput}
                 />
 
-                <View style={styles.unitSwitch}>
-                  {UNIT_TYPES.map((unitType) => {
-                    const active = selectedUnitType === unitType.key;
-                    return (
-                      <Pressable
-                        key={unitType.key}
-                        style={[styles.unitButton, active ? styles.unitButtonActive : null]}
-                        onPress={() => setSelectedUnitType(unitType.key)}>
-                        <Text style={[styles.unitButtonText, active ? styles.unitButtonTextActive : null]}>
-                          {unitType.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
+                {searchType === 'FOOD' ? (
+                  <View style={styles.unitSwitch}>
+                    {UNIT_TYPES.map((unitType) => {
+                      const active = selectedUnitType === unitType.key;
+                      return (
+                        <Pressable
+                          key={unitType.key}
+                          style={[styles.unitButton, active ? styles.unitButtonActive : null]}
+                          onPress={() => setSelectedUnitType(unitType.key)}>
+                          <Text style={[styles.unitButtonText, active ? styles.unitButtonTextActive : null]}>
+                            {unitType.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <View style={styles.recipeServingBadge}>
+                    <Text style={styles.recipeServingBadgeText}>Porsiyon</Text>
+                  </View>
+                )}
               </View>
 
               <TextInput
-                value={foodQuery}
-                onChangeText={setFoodQuery}
-                placeholder="Urun ara: egg, boiled egg, fried potato..."
+                value={searchType === 'FOOD' ? foodQuery : recipeQuery}
+                onChangeText={searchType === 'FOOD' ? setFoodQuery : setRecipeQuery}
+                placeholder={
+                  searchType === 'FOOD'
+                    ? 'Urun ara: egg, boiled egg, fried potato...'
+                    : 'Recipe ara: pasta, chicken salad, soup...'
+                }
                 placeholderTextColor="#94A3B8"
                 style={styles.searchInput}
               />
 
-              {searchLoading ? (
+              {searchType === 'FOOD' && foodSearchLoading ? (
                 <Text style={styles.inlineHint}>Urunler aranıyor...</Text>
-              ) : foodQuery.trim().length < 2 ? (
+              ) : null}
+
+              {searchType === 'RECIPE' && recipeSearchLoading ? (
+                <Text style={styles.inlineHint}>Recipe arama suruyor...</Text>
+              ) : null}
+
+              {searchType === 'FOOD' && foodQuery.trim().length < 2 ? (
                 <Text style={styles.inlineHint}>Arama icin en az 2 karakter gir.</Text>
               ) : null}
 
-              {foodResults.map((product) => (
+              {searchType === 'RECIPE' && recipeQuery.trim().length < 2 ? (
+                <Text style={styles.inlineHint}>Recipe aramak icin en az 2 karakter gir.</Text>
+              ) : null}
+
+              {searchType === 'FOOD' &&
+                foodResults.map((product) => (
                 <View key={product.id} style={styles.foodCard}>
                   <View style={styles.foodCardTop}>
                     <View style={styles.foodCardTextWrap}>
@@ -358,9 +485,9 @@ export default function ShoppingListTabScreen() {
                       </Text>
                     </View>
                     <Pressable
-                      style={[styles.primaryButtonSmall, !quantityValid ? styles.primaryButtonDisabled : null]}
+                      style={[styles.primaryButtonSmall, !foodQuantityValid ? styles.primaryButtonDisabled : null]}
                       onPress={() => void handleAddFood(product)}
-                      disabled={!quantityValid || submittingItemId === product.id}>
+                      disabled={!foodQuantityValid || submittingItemId === product.id}>
                       <Text style={styles.primaryButtonText}>
                         {submittingItemId === product.id ? '...' : 'Ekle'}
                       </Text>
@@ -371,6 +498,32 @@ export default function ShoppingListTabScreen() {
                   ) : null}
                 </View>
               ))}
+
+              {searchType === 'RECIPE' &&
+                recipeResults.map((recipe) => (
+                  <View key={recipe.id} style={styles.foodCard}>
+                    <View style={styles.foodCardTop}>
+                      <View style={styles.foodCardTextWrap}>
+                        <Text style={styles.foodName}>{recipe.title}</Text>
+                        <Text style={styles.foodMeta}>
+                          {formatNumber(recipe.calories, ' kcal')} • {recipe.primaryCategory} •{' '}
+                          {recipe.servings ? `${formatNumber(recipe.servings)} porsiyon` : 'Porsiyon bilgisi yok'}
+                        </Text>
+                      </View>
+                      <Pressable
+                        style={[styles.primaryButtonSmall, !recipeServingsValid ? styles.primaryButtonDisabled : null]}
+                        onPress={() => void handleAddRecipe(recipe)}
+                        disabled={!recipeServingsValid || submittingItemId === recipe.id}>
+                        <Text style={styles.primaryButtonText}>
+                          {submittingItemId === recipe.id ? '...' : 'Ekle'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                    <Text style={styles.foodSubMeta}>
+                      Hazirlama: {recipe.readyInMinutes ? `${recipe.readyInMinutes} dk` : 'Bilinmiyor'}
+                    </Text>
+                  </View>
+                ))}
             </View>
 
             <View style={styles.metricsGrid}>
@@ -412,10 +565,11 @@ export default function ShoppingListTabScreen() {
                       <View key={item.id} style={styles.mealItemCard}>
                         <View style={styles.mealItemHeader}>
                           <View style={styles.mealItemTextWrap}>
-                            <Text style={styles.mealItemTitle}>{item.foodName}</Text>
+                            <Text style={styles.mealItemTitle}>{getMealItemTitle(item)}</Text>
                             <Text style={styles.mealItemMeta}>
-                              {formatNumber(item.quantity)} {getUnitLabel(item.unitType).toLowerCase()} •{' '}
-                              {formatNumber(item.gramEquivalent, ' g')} • {formatNumber(item.calories, ' kcal')}
+                              {item.sourceType === 'RECIPE'
+                                ? `${formatNumber(item.quantity)} porsiyon • ${formatNumber(item.calories, ' kcal')}`
+                                : `${formatNumber(item.quantity)} ${getUnitLabel(item.unitType).toLowerCase()} • ${formatNumber(item.gramEquivalent, ' g')} • ${formatNumber(item.calories, ' kcal')}`}
                             </Text>
                           </View>
                           <Pressable
@@ -433,9 +587,7 @@ export default function ShoppingListTabScreen() {
                             disabled={submittingItemId === item.id}>
                             <Text style={styles.adjustButtonText}>-</Text>
                           </Pressable>
-                          <Text style={styles.adjustLabel}>
-                            Hizli duzenle ({item.unitType === 'PIECE' ? '1 tane' : '25 g'})
-                          </Text>
+                          <Text style={styles.adjustLabel}>{getMealItemAdjustLabel(item)}</Text>
                           <Pressable
                             style={styles.adjustButton}
                             onPress={() => void handleUpdateItem(meal.mealType, item, 'increase')}
@@ -450,7 +602,7 @@ export default function ShoppingListTabScreen() {
               ) : (
                 <View style={styles.emptyCard}>
                   <Text style={styles.emptyTitle}>Bugun henuz ogun eklenmedi</Text>
-                  <Text style={styles.emptyBody}>Yukardan bir urun arayip kahvalti, ogle, aksam ya da ara ogune ekleyebilirsin.</Text>
+                  <Text style={styles.emptyBody}>Yukardan bir urun ya da recipe arayip kahvalti, ogle, aksam ya da ara ogune ekleyebilirsin.</Text>
                 </View>
               )}
             </View>
@@ -635,6 +787,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
   },
+  modeSwitch: {
+    flexDirection: 'row',
+    backgroundColor: '#FFF7ED',
+    borderRadius: 16,
+    padding: 4,
+    gap: 4,
+  },
+  modeButton: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  modeButtonActive: {
+    backgroundColor: '#EA580C',
+  },
+  modeButtonText: {
+    color: '#9A3412',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  modeButtonTextActive: {
+    color: '#FFFFFF',
+  },
   quantityInput: {
     flex: 1,
     backgroundColor: '#F8FAFC',
@@ -655,6 +831,21 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     padding: 4,
     gap: 4,
+  },
+  recipeServingBadge: {
+    minWidth: 108,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  recipeServingBadgeText: {
+    color: '#475569',
+    fontSize: 13,
+    fontWeight: '800',
   },
   unitButton: {
     borderRadius: 12,

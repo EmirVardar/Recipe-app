@@ -5,25 +5,16 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
+import com.student.recipe.dto.meal.*;
+import com.student.recipe.entity.*;
+import com.student.recipe.repository.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.student.recipe.dto.meal.DailyMealLogsResponseDto;
-import com.student.recipe.dto.meal.MealLogItemCreateRequestDto;
-import com.student.recipe.dto.meal.MealLogItemResponseDto;
-import com.student.recipe.dto.meal.MealLogResponseDto;
-import com.student.recipe.entity.FoodProduct;
-import com.student.recipe.entity.MealLog;
-import com.student.recipe.entity.MealLogItem;
-import com.student.recipe.entity.User;
 import com.student.recipe.entity.enums.MealType;
 import com.student.recipe.entity.enums.MealUnitType;
-import com.student.recipe.repository.FoodProductRepository;
-import com.student.recipe.repository.MealLogItemRepository;
-import com.student.recipe.repository.MealLogRepository;
-import com.student.recipe.repository.UserRepository;
 
 @Service
 public class MealTrackingService {
@@ -32,17 +23,20 @@ public class MealTrackingService {
     private final FoodProductRepository foodProductRepository;
     private final MealLogRepository mealLogRepository;
     private final MealLogItemRepository mealLogItemRepository;
+    private final RecipeRepository recipeRepository;
 
     public MealTrackingService(
             UserRepository userRepository,
             FoodProductRepository foodProductRepository,
             MealLogRepository mealLogRepository,
-            MealLogItemRepository mealLogItemRepository
+            MealLogItemRepository mealLogItemRepository,
+            RecipeRepository recipeRepository
     ) {
         this.userRepository = userRepository;
         this.foodProductRepository = foodProductRepository;
         this.mealLogRepository = mealLogRepository;
         this.mealLogItemRepository = mealLogItemRepository;
+        this.recipeRepository = recipeRepository;
     }
 
     @Transactional
@@ -96,6 +90,7 @@ public class MealTrackingService {
 
         double gramEquivalent = calculateGramEquivalent(foodProduct, request.quantity(), unitType);
         item.setMealLog(targetMealLog);
+        item.setRecipe(null);
         item.setFoodProduct(foodProduct);
         item.setQuantity(request.quantity());
         item.setUnitType(unitType);
@@ -175,10 +170,29 @@ public class MealTrackingService {
     }
 
     private MealLogItemResponseDto toItemDto(MealLogItem item) {
+        Long sourceId;
+        String sourceName;
+        String sourceType;
+
+        if (item.getRecipe() != null) {
+            sourceId = item.getRecipe().getId();
+            sourceName = item.getRecipe().getTitle();
+            sourceType = "RECIPE";
+        } else if (item.getFoodProduct() != null) {
+            sourceId = item.getFoodProduct().getId();
+            sourceName = item.getFoodProduct().getName();
+            sourceType = "FOOD";
+        } else {
+            sourceId = null;
+            sourceName = null;
+            sourceType = "UNKNOWN";
+        }
+
         return new MealLogItemResponseDto(
                 item.getId(),
-                item.getFoodProduct().getId(),
-                item.getFoodProduct().getName(),
+                sourceId,
+                sourceName,
+                sourceType,
                 item.getQuantity(),
                 item.getUnitType().name(),
                 item.getGramEquivalent(),
@@ -294,5 +308,81 @@ public class MealTrackingService {
     private User getUserByEmail(String email) {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
+    }
+
+    @Transactional
+    public MealLogItemResponseDto addRecipeMealItem(String email, RecipeMealLogItemCreateRequestDto request) {
+        validateRecipeRequest(request);
+
+        User user = getUserByEmail(email);
+        MealType mealType = parseMealType(request.mealType());
+        LocalDate logDate = request.logDate() == null ? LocalDate.now() : request.logDate();
+
+        MealLog mealLog = mealLogRepository.findByUserIdAndLogDateAndMealType(user.getId(), logDate, mealType)
+                .orElseGet(() -> createMealLog(user, logDate, mealType));
+
+        MealLogItem item = new MealLogItem();
+        applyRecipeItem(item, request, mealLog);
+
+        MealLogItem saved = mealLogItemRepository.save(item);
+        return toItemDto(saved);
+    }
+
+    @Transactional
+    public MealLogItemResponseDto updateRecipeMealItem(String email, Long itemId, RecipeMealLogItemCreateRequestDto request) {
+        validateRecipeRequest(request);
+
+        User user = getUserByEmail(email);
+        MealLogItem item = getOwnedMealItem(user.getId(), itemId);
+        MealLog previousMealLog = item.getMealLog();
+
+        MealType mealType = parseMealType(request.mealType());
+        LocalDate logDate = request.logDate() == null ? LocalDate.now() : request.logDate();
+
+        MealLog targetMealLog = mealLogRepository.findByUserIdAndLogDateAndMealType(user.getId(), logDate, mealType)
+                .orElseGet(() -> createMealLog(user, logDate, mealType));
+
+        applyRecipeItem(item, request, targetMealLog);
+
+        MealLogItem saved = mealLogItemRepository.save(item);
+        cleanupMealLogIfEmpty(previousMealLog);
+        return toItemDto(saved);
+    }
+
+    private void applyRecipeItem(MealLogItem item, RecipeMealLogItemCreateRequestDto request, MealLog mealLog) {
+        Recipe recipe = recipeRepository.findById(request.recipeId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Recipe not found"));
+
+        RecipeNutrition nutrition = recipe.getRecipeNutrition();
+        if (nutrition == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Recipe has no nutrition information");
+        }
+
+        item.setMealLog(mealLog);
+        item.setRecipe(recipe);
+        item.setFoodProduct(null);
+        item.setQuantity(request.servings());
+        item.setUnitType(MealUnitType.SERVING);
+        item.setGramEquivalent(0.0);
+        item.setCalories(orZero(nutrition.getCalories()) * request.servings());
+        item.setProtein(orZero(nutrition.getProtein()) * request.servings());
+        item.setCarbs(orZero(nutrition.getCarbs()) * request.servings());
+        item.setFat(orZero(nutrition.getFat()) * request.servings());
+    }
+
+    private double orZero(Double value) {
+        return value != null ? value : 0.0;
+    }
+
+    private void validateRecipeRequest(RecipeMealLogItemCreateRequestDto request) {
+        if (request.recipeId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "recipeId is required");
+        }
+        if (request.servings() == null || request.servings() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "servings must be greater than 0");
+        }
+        if (request.mealType() == null || request.mealType().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "mealType is required");
+        }
     }
 }
