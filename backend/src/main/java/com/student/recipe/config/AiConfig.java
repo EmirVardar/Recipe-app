@@ -5,6 +5,7 @@ import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.reactive.function.client.WebClient;
 
 @Configuration
 public class AiConfig {
@@ -20,6 +21,17 @@ public class AiConfig {
         return OpenAiEmbeddingModel.builder()
                 .apiKey(apiKey)
                 .modelName(embeddingModel)
+                .build();
+    }
+
+    @Bean
+    public WebClient openAiAudioWebClient() {
+        return WebClient.builder()
+                .baseUrl("https://api.openai.com")
+                .defaultHeader("Authorization", "Bearer " + apiKey)
+                .codecs(configurer -> configurer
+                        .defaultCodecs()
+                        .maxInMemorySize(5 * 1024 * 1024)) // 10MB
                 .build();
     }
 }
