@@ -1,13 +1,18 @@
 package com.student.recipe.service.assistant;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.student.recipe.dto.assistant.AssistantChatResponseDto;
 import com.student.recipe.dto.assistant.UserAiProfileContextDto;
+import com.student.recipe.dto.meal.MealLogItemCreateRequestDto;
+import com.student.recipe.dto.meal.RecipeMealLogItemCreateRequestDto;
 import com.student.recipe.entity.Conversation;
 import com.student.recipe.entity.ConversationMessage;
 import com.student.recipe.entity.enums.ConversationMessageRole;
@@ -39,6 +44,39 @@ public class AssistantChatService {
             - Use TODAY'S NUTRITION LOG to give personalized daily feedback.
             """;
 
+    private static final String INTENT_SYSTEM_PROMPT = """
+            You are an intent detector for a nutrition app.
+            Analyze the user message and return ONLY a JSON object, nothing else.
+            
+            If the user says they ate/had/consumed something, return:
+            {
+              "intent": "LOG_MEAL",
+              "food_name": "<extracted food name>",
+              "meal_type": "<BREAKFAST|LUNCH|DINNER|SNACK>",
+              "servings": 1.0
+            }
+            
+            If the user asks about their personal nutrition data, daily progress,
+            calories consumed, calories remaining, what they ate today, or how they are doing, return:
+            {
+              "intent": "PERSONAL_QUERY"
+            }
+            
+            For everything else (recipe suggestions, food questions, general nutrition advice), return:
+            {
+              "intent": "OTHER"
+            }
+            
+            meal_type rules:
+            - morning/breakfast → BREAKFAST
+            - lunch/midday → LUNCH
+            - dinner/evening/night → DINNER
+            - snack/other → SNACK
+            - if not specified → DINNER
+            
+            Return ONLY the JSON, no explanation.
+            """;
+
     private final OpenAiService openAiService;
     private final UserAiProfileContextService userAiProfileContextService;
     private final UserAiContextPromptBuilder userAiContextPromptBuilder;
@@ -46,6 +84,7 @@ public class AssistantChatService {
     private final ConversationMemoryService conversationMemoryService;
     private final UserRepository userRepository;
     private final MealTrackingService mealTrackingService;
+    private final ObjectMapper objectMapper;
 
     public AssistantChatService(
             OpenAiService openAiService,
@@ -54,7 +93,8 @@ public class AssistantChatService {
             EmbeddingVectorService vectorService,
             ConversationMemoryService conversationMemoryService,
             UserRepository userRepository,
-            MealTrackingService mealTrackingService
+            MealTrackingService mealTrackingService,
+            ObjectMapper objectMapper
     ) {
         this.openAiService = openAiService;
         this.userAiProfileContextService = userAiProfileContextService;
@@ -63,6 +103,7 @@ public class AssistantChatService {
         this.conversationMemoryService = conversationMemoryService;
         this.userRepository = userRepository;
         this.mealTrackingService = mealTrackingService;
+        this.objectMapper = objectMapper;
     }
 
     public AssistantChatResponseDto chat(String userEmail, String message) {
@@ -70,28 +111,268 @@ public class AssistantChatService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "message is required");
         }
 
-        // 1) Kullanıcı ID'sini çek
         Long userId = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"))
                 .getId();
 
-        // 2) Konuşma geçmişini çek
         Conversation conversation = conversationMemoryService.getOrCreate(userId, DEFAULT_CONVERSATION_KEY);
         List<ConversationMessage> history = conversationMemoryService.getLastMessages(conversation.getId(), HISTORY_LIMIT);
         String historyBlock = formatHistory(history);
 
-        // 3) Kullanıcı profilini çek
+        // 1) Pending action var mı kontrol et
+        if (conversation.getPendingActionType() != null) {
+            return handlePendingConfirmation(userEmail, message, conversation, historyBlock);
+        }
+
+        // 2) Intent detection
+        String intentJson = openAiService.chat(INTENT_SYSTEM_PROMPT, message.trim());
+        String intent = extractIntent(intentJson);
+
+        // 3) Intent'e göre yönlendir
+        if ("LOG_MEAL".equals(intent)) {
+            return handleLogMealIntent(userEmail, message, intentJson, conversation, historyBlock);
+        }
+
+        if ("PERSONAL_QUERY".equals(intent)) {
+            return handlePersonalQuery(userEmail, message, conversation, historyBlock);
+        }
+
+        // 4) OTHER → Normal RAG flow
+        return handleNormalChat(userEmail, message, conversation, historyBlock);
+    }
+
+    // ── PENDING CONFIRMATION ────────────────────────────────────────
+
+    private AssistantChatResponseDto handlePendingConfirmation(
+            String userEmail, String message, Conversation conversation, String historyBlock) {
+
+        String trimmed = message.trim().toLowerCase();
+        boolean confirmed = trimmed.equals("yes") || trimmed.equals("yeah") ||
+                trimmed.equals("yep") || trimmed.equals("ok") ||
+                trimmed.equals("okay") || trimmed.equals("sure") ||
+                trimmed.equals("add it") || trimmed.equals("confirm");
+
+        boolean rejected = trimmed.equals("no") || trimmed.equals("nope") ||
+                trimmed.equals("cancel") || trimmed.equals("don't") ||
+                trimmed.equals("skip");
+
+        if (confirmed) {
+            String answer = executePendingAction(userEmail, conversation);
+            conversationMemoryService.clearPendingAction(conversation);
+            conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
+            conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
+            return new AssistantChatResponseDto(
+                    answer,
+                    List.of("This response is for general informational purposes and does not replace medical advice."),
+                    List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian.")
+            );
+        }
+
+        if (rejected) {
+            conversationMemoryService.clearPendingAction(conversation);
+            String answer = "Got it, I won't add it to your log. Let me know if you need anything else!";
+            conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
+            conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
+            return new AssistantChatResponseDto(
+                    answer,
+                    List.of("This response is for general informational purposes and does not replace medical advice."),
+                    List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian.")
+            );
+        }
+
+        String answer = "I'm waiting for your confirmation. Should I add this to your meal log? Reply 'yes' to confirm or 'no' to cancel.";
+        conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
+        conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
+        return new AssistantChatResponseDto(
+                answer,
+                List.of("This response is for general informational purposes and does not replace medical advice."),
+                List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian.")
+        );
+    }
+
+    private String executePendingAction(String userEmail, Conversation conversation) {
+        try {
+            String data = conversation.getPendingActionData();
+            Map<String, Object> actionData = objectMapper.readValue(data, Map.class);
+
+            String sourceType = (String) actionData.get("sourceType");
+            String mealType = (String) actionData.get("mealType");
+            String sourceName = (String) actionData.get("sourceName");
+            double calories = ((Number) actionData.get("calories")).doubleValue();
+
+            if ("RECIPE".equals(sourceType)) {
+                Long recipeId = ((Number) actionData.get("sourceId")).longValue();
+                double servings = ((Number) actionData.get("servings")).doubleValue();
+                mealTrackingService.addRecipeMealItem(userEmail, new RecipeMealLogItemCreateRequestDto(
+                        LocalDate.now(), mealType, recipeId, servings
+                ));
+            } else {
+                Long foodId = ((Number) actionData.get("sourceId")).longValue();
+                double quantity = ((Number) actionData.get("quantity")).doubleValue();
+                String unitType = (String) actionData.get("unitType");
+                mealTrackingService.addMealItem(userEmail, new MealLogItemCreateRequestDto(
+                        LocalDate.now(), mealType, foodId, quantity, unitType
+                ));
+            }
+
+            return String.format("✓ **%s** has been added to your %s log (%.0f kcal). Your daily total has been updated!",
+                    sourceName, mealType.toLowerCase(), calories);
+
+        } catch (Exception e) {
+            return "Sorry, I couldn't add that to your log. Please try again.";
+        }
+    }
+
+    // ── LOG MEAL INTENT ─────────────────────────────────────────────
+
+    @SuppressWarnings("unchecked")
+    private AssistantChatResponseDto handleLogMealIntent(
+            String userEmail, String message, String intentJson,
+            Conversation conversation, String historyBlock) {
+
+        try {
+            Map<String, Object> intentData = objectMapper.readValue(intentJson, Map.class);
+            String foodName = (String) intentData.get("food_name");
+            String mealType = (String) intentData.getOrDefault("meal_type", "DINNER");
+            double servings = ((Number) intentData.getOrDefault("servings", 1.0)).doubleValue();
+
+            // ChromaDB'den en yakın sonucu al - recipe veya food fark etmez
+            List<DocumentMatch> matches = vectorService.findRelevant(foodName, 5);
+            DocumentMatch bestMatch = matches.stream()
+                    .filter(m -> m.distance() <= RELEVANCE_THRESHOLD)
+                    .filter(m -> "recipe".equals(m.metadata().get("kind"))
+                            || "food".equals(m.metadata().get("kind")))
+                    .findFirst()
+                    .orElse(null);
+
+            if (bestMatch != null) {
+                String kind = (String) bestMatch.metadata().get("kind");
+
+                if ("recipe".equals(kind)) {
+                    Long recipeId = Long.parseLong(bestMatch.metadata().get("id").toString());
+                    String recipeName = bestMatch.metadata().get("title") != null
+                            ? bestMatch.metadata().get("title").toString() : foodName;
+                    double calories = extractCaloriesFromText(bestMatch.text(), servings);
+
+                    Map<String, Object> actionData = Map.of(
+                            "sourceType", "RECIPE",
+                            "sourceId", recipeId,
+                            "sourceName", recipeName,
+                            "mealType", mealType,
+                            "servings", servings,
+                            "calories", calories
+                    );
+                    conversationMemoryService.setPendingAction(
+                            conversation, "LOG_MEAL", objectMapper.writeValueAsString(actionData));
+
+                    String answer = String.format(
+                            "I found **%s** (approximately %.0f kcal for %.1f serving). Should I add it to your %s log? Reply 'yes' to confirm or 'no' to cancel.",
+                            recipeName, calories, servings, mealType.toLowerCase());
+
+                    conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
+                    conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
+                    return new AssistantChatResponseDto(answer,
+                            List.of("This response is for general informational purposes and does not replace medical advice."),
+                            List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian."));
+
+                } else {
+                    Long foodId = Long.parseLong(bestMatch.metadata().get("id").toString());
+                    String foundFoodName = bestMatch.metadata().get("name") != null
+                            ? bestMatch.metadata().get("name").toString() : foodName;
+                    double calories = bestMatch.metadata().get("calories") != null
+                            ? Double.parseDouble(bestMatch.metadata().get("calories").toString()) : 0.0;
+
+                    Map<String, Object> actionData = Map.of(
+                            "sourceType", "FOOD",
+                            "sourceId", foodId,
+                            "sourceName", foundFoodName,
+                            "mealType", mealType,
+                            "quantity", 100.0,
+                            "unitType", "GRAM",
+                            "calories", calories
+                    );
+                    conversationMemoryService.setPendingAction(
+                            conversation, "LOG_MEAL", objectMapper.writeValueAsString(actionData));
+
+                    String answer = String.format(
+                            "I found **%s** (%.0f kcal per 100g). Should I add 100g to your %s log? Reply 'yes' to confirm or 'no' to cancel.",
+                            foundFoodName, calories, mealType.toLowerCase());
+
+                    conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
+                    conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
+                    return new AssistantChatResponseDto(answer,
+                            List.of("This response is for general informational purposes and does not replace medical advice."),
+                            List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian."));
+                }
+            }
+
+            String answer = String.format(
+                    "I couldn't find '%s' in my database. Could you be more specific or try a different name?", foodName);
+            conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
+            conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
+            return new AssistantChatResponseDto(answer,
+                    List.of("This response is for general informational purposes and does not replace medical advice."),
+                    List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian."));
+
+        } catch (Exception e) {
+            return handleNormalChat(userEmail, message, conversation, historyBlock);
+        }
+    }
+
+    // ── PERSONAL QUERY ──────────────────────────────────────────────
+
+    private AssistantChatResponseDto handlePersonalQuery(
+            String userEmail, String message, Conversation conversation, String historyBlock) {
+
         UserAiProfileContextDto context = userAiProfileContextService.buildContext(userEmail);
         String profileContext = userAiContextPromptBuilder.buildProfileParagraph(context);
-
-        // 4) Günlük kalori bilgisi
         String dailyNutritionContext = buildDailyNutritionContext(userEmail);
 
-        // 5) Semantic search
+        String userPrompt = """
+                === USER PROFILE ===
+                %s
+                
+                %s
+                
+                === CONVERSATION HISTORY ===
+                %s
+                
+                === USER QUESTION ===
+                %s
+                
+                Answer based on the user's profile and today's nutrition log only.
+                Be specific with numbers. Calculate remaining calories if asked.
+                """.formatted(
+                profileContext,
+                dailyNutritionContext,
+                historyBlock.isBlank() ? "(No previous conversation)" : historyBlock,
+                message.trim()
+        );
+
+        String answer = openAiService.chat(SYSTEM_PROMPT, userPrompt);
+
+        conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
+        conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
+
+        return new AssistantChatResponseDto(
+                answer,
+                List.of("This response is for general informational purposes and does not replace medical advice."),
+                List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian.")
+        );
+    }
+
+    // ── NORMAL CHAT (RAG) ───────────────────────────────────────────
+
+    private AssistantChatResponseDto handleNormalChat(
+            String userEmail, String message, Conversation conversation, String historyBlock) {
+
+        UserAiProfileContextDto context = userAiProfileContextService.buildContext(userEmail);
+        String profileContext = userAiContextPromptBuilder.buildProfileParagraph(context);
+        String dailyNutritionContext = buildDailyNutritionContext(userEmail);
+
         List<DocumentMatch> matches = vectorService.findRelevant(message.trim(), 5);
         String ragContext = buildRagContext(matches);
 
-        // 6) Final prompt
         String userPrompt = """
                 === USER PROFILE ===
                 %s
@@ -118,7 +399,6 @@ public class AssistantChatService {
 
         String answer = openAiService.chat(SYSTEM_PROMPT, userPrompt);
 
-        // 7) Konuşmayı kaydet
         conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
         conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
 
@@ -129,6 +409,40 @@ public class AssistantChatService {
         );
     }
 
+    // ── HELPERS ─────────────────────────────────────────────────────
+
+    @SuppressWarnings("unchecked")
+    private String extractIntent(String intentJson) {
+        try {
+            String cleaned = intentJson.trim()
+                    .replaceAll("```json", "")
+                    .replaceAll("```", "")
+                    .trim();
+            Map<String, Object> map = objectMapper.readValue(cleaned, Map.class);
+            return (String) map.getOrDefault("intent", "OTHER");
+        } catch (Exception e) {
+            return "OTHER";
+        }
+    }
+
+    private double extractCaloriesFromText(String text, double servings) {
+        try {
+            String[] lines = text.split("\n");
+            for (String line : lines) {
+                if (line.toLowerCase().contains("kcal")) {
+                    String[] parts = line.split("\\s+");
+                    for (int i = 0; i < parts.length; i++) {
+                        if (parts[i].toLowerCase().contains("kcal") && i > 0) {
+                            double cal = Double.parseDouble(parts[i - 1].replaceAll("[^0-9.]", ""));
+                            return cal * servings;
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return 0.0;
+    }
+
     private String buildDailyNutritionContext(String userEmail) {
         try {
             var dailyMeals = mealTrackingService.getDailyMeals(userEmail, null);
@@ -136,12 +450,12 @@ public class AssistantChatService {
 
             StringBuilder sb = new StringBuilder();
             sb.append(String.format("""
-                === TODAY'S NUTRITION LOG ===
-                Total calories consumed: %.0f kcal
-                Total protein: %.1f g
-                Total carbs: %.1f g
-                Total fat: %.1f g
-                """,
+                    === TODAY'S NUTRITION LOG ===
+                    Total calories consumed: %.0f kcal
+                    Total protein: %.1f g
+                    Total carbs: %.1f g
+                    Total fat: %.1f g
+                    """,
                     dailyMeals.totalCalories() != null ? dailyMeals.totalCalories() : 0.0,
                     dailyMeals.totalProtein() != null ? dailyMeals.totalProtein() : 0.0,
                     dailyMeals.totalCarbs() != null ? dailyMeals.totalCarbs() : 0.0,
@@ -164,18 +478,6 @@ public class AssistantChatService {
         } catch (Exception e) {
             return "";
         }
-    }
-
-    private String formatHistory(List<ConversationMessage> history) {
-        if (history == null || history.isEmpty()) return "";
-        StringBuilder sb = new StringBuilder();
-        for (ConversationMessage m : history) {
-            String role = m.getRole() == ConversationMessageRole.USER ? "User" : "Assistant";
-            String content = m.getContent() == null ? "" : m.getContent().trim();
-            if (content.length() > 500) content = content.substring(0, 500) + "...";
-            sb.append(role).append(": ").append(content).append("\n");
-        }
-        return sb.toString().trim();
     }
 
     private String buildRagContext(List<DocumentMatch> matches) {
@@ -202,5 +504,17 @@ public class AssistantChatService {
         }
 
         return sb.toString();
+    }
+
+    private String formatHistory(List<ConversationMessage> history) {
+        if (history == null || history.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (ConversationMessage m : history) {
+            String role = m.getRole() == ConversationMessageRole.USER ? "User" : "Assistant";
+            String content = m.getContent() == null ? "" : m.getContent().trim();
+            if (content.length() > 500) content = content.substring(0, 500) + "...";
+            sb.append(role).append(": ").append(content).append("\n");
+        }
+        return sb.toString().trim();
     }
 }

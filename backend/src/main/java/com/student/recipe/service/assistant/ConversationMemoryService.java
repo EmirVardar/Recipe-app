@@ -56,4 +56,17 @@ public class ConversationMemoryService {
         m.setContent(content);
         messageRepository.save(m);
     }
+    @Transactional
+    public void setPendingAction(Conversation conversation, String type, String data) {
+        conversation.setPendingActionType(type);
+        conversation.setPendingActionData(data);
+        conversationRepository.save(conversation);
+    }
+
+    @Transactional
+    public void clearPendingAction(Conversation conversation) {
+        conversation.setPendingActionType(null);
+        conversation.setPendingActionData(null);
+        conversationRepository.save(conversation);
+    }
 }

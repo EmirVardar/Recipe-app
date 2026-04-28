@@ -44,4 +44,9 @@ public class Conversation {
     void onCreate() {
         this.createdAt = Instant.now();
     }
+    @Column(columnDefinition = "TEXT")
+    private String pendingActionType;   // "LOG_MEAL" veya null
+
+    @Column(columnDefinition = "TEXT")
+    private String pendingActionData;   // JSON olarak tarif/food bilgisi
 }
