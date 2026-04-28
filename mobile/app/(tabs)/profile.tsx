@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 
 import { getMedical, getNutrition, getProfile, login, register, updateMedical, updateNutrition, updateProfile } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -600,6 +601,15 @@ export default function ProfileTabScreen() {
                 <View style={styles.managementTextWrap}>
                   <Text style={styles.managementTitle}>Beslenme Tercihleri</Text>
                   <Text style={styles.managementSubtitle}>Sadece Senin Icin sekmesi icin gecerlidir</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+              </Pressable>
+
+              <Pressable style={styles.managementRow} onPress={() => router.push('/assistant-lab')}>
+                <Ionicons name="sparkles-outline" size={24} color="#111827" />
+                <View style={styles.managementTextWrap}>
+                  <Text style={styles.managementTitle}>AI Test Center</Text>
+                  <Text style={styles.managementSubtitle}>See how your profile context shapes AI responses</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
               </Pressable>

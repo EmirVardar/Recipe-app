@@ -3,7 +3,6 @@ package com.student.recipe.repository;
 import java.util.List;
 import java.util.Optional;
 
-import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -67,4 +66,30 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
     );
 
     Optional<Recipe> findBySpoonacularId(Long spoonacularId);
+
+    @Query("select r.id from Recipe r")
+    List<Long> findAllIds();
+
+    @Query("""
+            select r from Recipe r
+            left join fetch r.recipeNutrition
+            left join fetch r.recipeIngredients ri
+            left join fetch ri.ingredient
+            where r.id = :id
+            """)
+    Optional<Recipe> findByIdWithIngredientsAndNutrition(@Param("id") Long id);
+
+    @Query("""
+            select r from Recipe r
+            left join fetch r.recipeTags
+            where r.id = :id
+            """)
+    Optional<Recipe> findByIdWithTags(@Param("id") Long id);
+
+    @Query("""
+            select r from Recipe r
+            left join fetch r.recipeSteps
+            where r.id = :id
+            """)
+    Optional<Recipe> findByIdWithSteps(@Param("id") Long id);
 }

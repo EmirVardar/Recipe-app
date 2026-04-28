@@ -6,8 +6,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.student.recipe.dto.SpoonacularQuerySeedImportResponseDto;
-import com.student.recipe.dto.SpoonacularImportResponseDto;
+import com.student.recipe.dto.importing.SpoonacularQuerySeedImportResponseDto;
+import com.student.recipe.dto.importing.SpoonacularImportResponseDto;
 import com.student.recipe.service.RecipeImportService;
 import com.student.recipe.service.SpoonacularQuerySeedImportService;
 

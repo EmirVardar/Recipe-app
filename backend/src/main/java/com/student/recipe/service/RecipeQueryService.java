@@ -9,12 +9,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.student.recipe.dto.RecipeDetailDto;
-import com.student.recipe.dto.RecipeIngredientDto;
-import com.student.recipe.dto.RecipeListItemDto;
-import com.student.recipe.dto.RecipeNutritionDto;
-import com.student.recipe.dto.RecipeStepDto;
-import com.student.recipe.dto.RecipeTagDto;
+import com.student.recipe.dto.recipe.RecipeDetailDto;
+import com.student.recipe.dto.recipe.RecipeIngredientDto;
+import com.student.recipe.dto.recipe.RecipeListItemDto;
+import com.student.recipe.dto.recipe.RecipeNutritionDto;
+import com.student.recipe.dto.recipe.RecipeStepDto;
+import com.student.recipe.dto.recipe.RecipeTagDto;
 import com.student.recipe.entity.Recipe;
 import com.student.recipe.entity.RecipeIngredient;
 import com.student.recipe.entity.RecipeNutrition;

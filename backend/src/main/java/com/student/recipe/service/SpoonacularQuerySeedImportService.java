@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.student.recipe.dto.SpoonacularQuerySeedImportResponseDto;
+import com.student.recipe.dto.importing.SpoonacularQuerySeedImportResponseDto;
 import com.student.recipe.entity.ImportQuery;
 import com.student.recipe.repository.ImportQueryRepository;
 

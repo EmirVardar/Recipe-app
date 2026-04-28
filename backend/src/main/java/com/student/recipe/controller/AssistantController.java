@@ -7,8 +7,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.student.recipe.dto.AssistantChatRequestDto;
-import com.student.recipe.dto.AssistantChatResponseDto;
+import com.student.recipe.dto.assistant.AssistantChatRequestDto;
+import com.student.recipe.dto.assistant.AssistantChatResponseDto;
 import com.student.recipe.service.assistant.AssistantChatService;
 
 @RestController

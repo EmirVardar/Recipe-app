@@ -26,8 +26,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.student.recipe.dto.FnddsFoodProductImportResponseDto;
-import com.student.recipe.dto.FnddsRawImportResponseDto;
+import com.student.recipe.dto.importing.FnddsFoodProductImportResponseDto;
+import com.student.recipe.dto.importing.FnddsRawImportResponseDto;
 
 @Service
 public class FnddsImportService {

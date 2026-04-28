@@ -10,7 +10,7 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.student.recipe.dto.FoodProductSearchItemDto;
+import com.student.recipe.dto.food.FoodProductSearchItemDto;
 
 @Service
 public class FoodProductQueryService {

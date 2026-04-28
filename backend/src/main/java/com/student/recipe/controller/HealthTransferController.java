@@ -7,8 +7,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.student.recipe.dto.HealthTransferRequestDto;
-import com.student.recipe.dto.HealthTransferResponseDto;
+import com.student.recipe.dto.health.HealthTransferRequestDto;
+import com.student.recipe.dto.health.HealthTransferResponseDto;
 import com.student.recipe.service.HealthTransferService;
 
 @RestController

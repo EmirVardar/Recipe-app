@@ -8,13 +8,13 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.student.recipe.dto.MedicalResponseDto;
-import com.student.recipe.dto.MedicalUpdateRequestDto;
-import com.student.recipe.dto.NutritionPreferenceResponseDto;
-import com.student.recipe.dto.NutritionPreferenceUpdateRequestDto;
-import com.student.recipe.dto.OnboardingStatusResponseDto;
-import com.student.recipe.dto.ProfileResponseDto;
-import com.student.recipe.dto.ProfileUpdateRequestDto;
+import com.student.recipe.dto.user.MedicalResponseDto;
+import com.student.recipe.dto.user.MedicalUpdateRequestDto;
+import com.student.recipe.dto.user.NutritionPreferenceResponseDto;
+import com.student.recipe.dto.user.NutritionPreferenceUpdateRequestDto;
+import com.student.recipe.dto.user.OnboardingStatusResponseDto;
+import com.student.recipe.dto.user.ProfileResponseDto;
+import com.student.recipe.dto.user.ProfileUpdateRequestDto;
 import com.student.recipe.service.UserHealthService;
 
 @RestController

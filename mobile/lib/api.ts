@@ -154,6 +154,14 @@ export type AssistantChatResponse = {
   suggestions: string[];
 };
 
+export type AssistantVoiceResponse = {
+  transcribedText: string;
+  answer: string;
+  audio: string;
+  warnings: string[];
+  suggestions: string[];
+};
+
 export type HealthTransferResponse = {
   success: boolean;
   id: number;
@@ -183,10 +191,20 @@ export type MealLogItemCreateRequest = {
   unitType: string;
 };
 
+export type RecipeMealLogItemCreateRequest = {
+  logDate?: string;
+  mealType: string;
+  recipeId: number;
+  servings: number;
+};
+
 export type MealLogItemResponse = {
   id: number;
-  foodProductId: number;
-  foodName: string;
+  foodProductId: number | null;
+  foodName: string | null;
+  sourceId: number | null;
+  sourceName: string | null;
+  sourceType: 'FOOD' | 'RECIPE' | 'UNKNOWN';
   quantity: number;
   unitType: string;
   gramEquivalent: number;
@@ -421,6 +439,26 @@ export async function chatWithAssistant(accessToken: string, message: string): P
   });
 }
 
+export async function chatWithAssistantVoice(
+  accessToken: string,
+  audioFile: { uri: string; name?: string; type?: string }
+): Promise<AssistantVoiceResponse> {
+  const formData = new FormData();
+  formData.append('file', {
+    uri: audioFile.uri,
+    name: audioFile.name ?? 'voice-message.m4a',
+    type: audioFile.type ?? 'audio/m4a',
+  } as unknown as Blob);
+
+  return multipartRequest<AssistantVoiceResponse>('/api/assistant/voice', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: formData,
+  });
+}
+
 export async function getHealthTransferRecords(): Promise<HealthTransferResponse[]> {
   return request<HealthTransferResponse[]>('/api/saglik/kayitlar', {
     method: 'GET',
@@ -464,8 +502,32 @@ export async function addMealItem(accessToken: string, payload: MealLogItemCreat
   });
 }
 
+export async function addRecipeMealItem(accessToken: string, payload: RecipeMealLogItemCreateRequest) {
+  return request<MealLogItemResponse>('/api/meals/items/recipe', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function updateMealItem(accessToken: string, itemId: number, payload: MealLogItemCreateRequest) {
   return request<MealLogItemResponse>(`/api/meals/items/${itemId}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateRecipeMealItem(
+  accessToken: string,
+  itemId: number,
+  payload: RecipeMealLogItemCreateRequest
+) {
+  return request<MealLogItemResponse>(`/api/meals/items/${itemId}/recipe`, {
     method: 'PUT',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -507,6 +569,30 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
 
   if (response.status === 204) {
     return undefined as T;
+  }
+
+  const responseText = await response.text();
+  if (!responseText) {
+    return undefined as T;
+  }
+
+  return JSON.parse(responseText) as T;
+}
+
+async function multipartRequest<T>(path: string, init: RequestInit): Promise<T> {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, init);
+
+  if (!response.ok) {
+    let errorMessage = `Istek ${response.status} kodu ile basarisiz oldu`;
+
+    try {
+      const errorData = (await response.json()) as { message?: string; error?: string; detail?: string };
+      errorMessage = errorData.message ?? errorData.detail ?? errorData.error ?? errorMessage;
+    } catch {
+      // Keep fallback message when body is not JSON.
+    }
+
+    throw new Error(errorMessage);
   }
 
   const responseText = await response.text();

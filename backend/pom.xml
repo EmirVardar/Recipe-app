@@ -30,6 +30,18 @@
 		<java.version>21</java.version>
 	</properties>
 	<dependencies>
+        <!-- LangChain4j OpenAI - embedding için -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-open-ai</artifactId>
+            <version>0.31.0</version>
+        </dependency>
+
+        <!-- WebFlux - ChromaClient HTTP calls için -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-data-jpa</artifactId>

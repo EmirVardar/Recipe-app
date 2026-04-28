@@ -35,9 +35,13 @@ public class MealLogItem {
     @JoinColumn(name = "meal_log_id", nullable = false)
     private MealLog mealLog;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "food_product_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "food_product_id", nullable = true)
     private FoodProduct foodProduct;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "recipe_id", nullable = true)
+    private Recipe recipe;
 
     @Column(nullable = false)
     private Double quantity;

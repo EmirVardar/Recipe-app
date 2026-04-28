@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.student.recipe.dto.FoodProductSearchItemDto;
+import com.student.recipe.dto.food.FoodProductSearchItemDto;
 import com.student.recipe.service.FoodProductQueryService;
 
 @RestController
