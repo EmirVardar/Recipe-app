@@ -1,6 +1,6 @@
 package com.student.recipe.entity;
 
-import java.time.Instant;
+import java.time.LocalDate;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -30,11 +30,13 @@ public class HealthTransferRecord {
     @Column(nullable = false)
     private Double kalori;
 
-    @Column(nullable = false, updatable = false)
-    private Instant createdAt;
+    @Column(nullable = false)
+    private LocalDate date;
 
     @PrePersist
     void onCreate() {
-        this.createdAt = Instant.now();
+        if (this.date == null) {
+            this.date = LocalDate.now();
+        }
     }
 }

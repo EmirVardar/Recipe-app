@@ -6,5 +6,5 @@ import com.student.recipe.entity.HealthTransferRecord;
 
 public interface HealthTransferRecordRepository extends JpaRepository<HealthTransferRecord, Long> {
 
-    java.util.List<HealthTransferRecord> findTop100ByOrderByCreatedAtDesc();
+    java.util.List<HealthTransferRecord> findTop100ByOrderByDateDesc();
 }

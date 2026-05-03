@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
+import HealthKit from '@kingstinct/react-native-healthkit';
 import {
   addRecipeMealItem,
   addMealItem,
@@ -20,6 +20,7 @@ import {
   getHealthTransferRecords,
   searchFoodProducts,
   searchRecipes,
+  sendHealthData,
   updateMealItem,
   updateRecipeMealItem,
   type DailyMealLogsResponse,
@@ -106,6 +107,7 @@ function getMealItemAdjustLabel(item: MealLogItemResponse) {
 
 export default function ShoppingListTabScreen() {
   const { accessToken, isLoggedIn } = useAuth();
+
   const [records, setRecords] = useState<HealthTransferResponse[]>([]);
   const [dailyMeals, setDailyMeals] = useState<DailyMealLogsResponse | null>(null);
   const [foodResults, setFoodResults] = useState<FoodProductSearchItemResponse[]>([]);
@@ -123,6 +125,7 @@ export default function ShoppingListTabScreen() {
   const [recipeSearchLoading, setRecipeSearchLoading] = useState(false);
   const [submittingItemId, setSubmittingItemId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [syncingHealth, setSyncingHealth] = useState(false);
 
   const loadDashboard = useCallback(
     async (isRefresh = false) => {
@@ -149,6 +152,101 @@ export default function ShoppingListTabScreen() {
     },
     [accessToken]
   );
+
+  const syncHealthData = useCallback(async () => {
+    setSyncingHealth(true);
+
+    try {
+      const isAvailable = await HealthKit.isHealthDataAvailable();
+      if (!isAvailable) {
+        setErrorMessage('HealthKit bu cihazda kullanılamıyor.');
+        setSyncingHealth(false);
+        return;
+      }
+
+      await HealthKit.requestAuthorization({
+        toRead: ['HKQuantityTypeIdentifierStepCount', 'HKQuantityTypeIdentifierActiveEnergyBurned'],
+      });
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0];
+      const stepSources = await HealthKit.querySources('HKQuantityTypeIdentifierStepCount');
+      const watchStepSources = stepSources.filter((source) =>
+        source.name.toLowerCase().includes('apple watch') || source.name.toLowerCase().includes('watch')
+      );
+
+      console.log(
+        'HealthKit step sources:',
+        stepSources.map((source) => ({ name: source.name, bundleIdentifier: source.bundleIdentifier }))
+      );
+      console.log(
+        'HealthKit watch step sources:',
+        watchStepSources.map((source) => ({ name: source.name, bundleIdentifier: source.bundleIdentifier }))
+      );
+
+      const stepSamples = await HealthKit.queryQuantitySamples(
+        'HKQuantityTypeIdentifierStepCount',
+        {
+          unit: 'count',
+          limit: 0,
+          filter: {
+            sources: watchStepSources.length > 0 ? watchStepSources : undefined,
+            date: {
+              startDate: today,
+              endDate: now,
+            },
+          },
+        }
+      );
+      const adim = Math.round(stepSamples.reduce((sum, s) => sum + s.quantity, 0));
+
+      const calorieSources = await HealthKit.querySources('HKQuantityTypeIdentifierActiveEnergyBurned');
+      const watchCalorieSources = calorieSources.filter((source) =>
+        source.name.toLowerCase().includes('apple watch') || source.name.toLowerCase().includes('watch')
+      );
+
+      console.log(
+        'HealthKit calorie sources:',
+        calorieSources.map((source) => ({ name: source.name, bundleIdentifier: source.bundleIdentifier }))
+      );
+      console.log(
+        'HealthKit watch calorie sources:',
+        watchCalorieSources.map((source) => ({ name: source.name, bundleIdentifier: source.bundleIdentifier }))
+      );
+
+      const calorieSamples = await HealthKit.queryQuantitySamples(
+        'HKQuantityTypeIdentifierActiveEnergyBurned',
+        {
+          unit: 'kcal',
+          limit: 0,
+          filter: {
+            sources: watchCalorieSources.length > 0 ? watchCalorieSources : undefined,
+            date: {
+              startDate: today,
+              endDate: now,
+            },
+          },
+        }
+      );
+      const kalori = Math.round(calorieSamples.reduce((sum, s) => sum + s.quantity, 0));
+
+      await sendHealthData({ adim, kalori, date: dateStr });
+      await loadDashboard();
+      setErrorMessage('');
+    } catch (e) {
+      console.log(
+        'HealthKit error:',
+        e,
+        e instanceof Error ? e.message : 'unknown',
+        JSON.stringify(e, Object.getOwnPropertyNames(e ?? {}))
+      );
+      setErrorMessage('HealthKit baglantisi kurulamadi.');
+    } finally {
+      setSyncingHealth(false);
+    }
+  }, [loadDashboard]);
 
   useEffect(() => {
     void loadDashboard();
@@ -207,11 +305,12 @@ export default function ShoppingListTabScreen() {
   }, [accessToken, isLoggedIn, recipeQuery]);
 
   const latestRecord = records[0] ?? null;
+
   const dailyLatestRecords = useMemo(() => {
     const latestByDay = new Map<string, HealthTransferResponse>();
 
     for (const record of records) {
-      const dayKey = getDayKey(record.createdAt);
+      const dayKey = getDayKey(record.date);
       if (!latestByDay.has(dayKey)) {
         latestByDay.set(dayKey, record);
       }
@@ -221,15 +320,21 @@ export default function ShoppingListTabScreen() {
   }, [records]);
 
   const todayKey = getDayKey(new Date().toISOString());
+
   const todayRecord = useMemo(
-    () => dailyLatestRecords.find((record) => getDayKey(record.createdAt) === todayKey) ?? latestRecord,
+    () => dailyLatestRecords.find((record) => getDayKey(record.date) === todayKey) ?? latestRecord,
     [dailyLatestRecords, latestRecord, todayKey]
   );
+
   const totalHealthCalories = useMemo(
     () => dailyLatestRecords.reduce((sum, item) => sum + item.kalori, 0),
     [dailyLatestRecords]
   );
-  const totalSteps = useMemo(() => dailyLatestRecords.reduce((sum, item) => sum + item.adim, 0), [dailyLatestRecords]);
+
+  const totalSteps = useMemo(
+    () => dailyLatestRecords.reduce((sum, item) => sum + item.adim, 0),
+    [dailyLatestRecords]
+  );
 
   const parsedFoodQuantity = Number(foodQuantityInput.replace(',', '.'));
   const parsedRecipeServings = Number(recipeServingsInput.replace(',', '.'));
@@ -242,6 +347,7 @@ export default function ShoppingListTabScreen() {
     }
 
     setSubmittingItemId(product.id);
+
     try {
       await addMealItem(accessToken, {
         mealType: selectedMealType,
@@ -249,6 +355,7 @@ export default function ShoppingListTabScreen() {
         quantity: parsedFoodQuantity,
         unitType: selectedUnitType,
       });
+
       setFoodQuery('');
       setFoodResults([]);
       await loadDashboard();
@@ -265,12 +372,14 @@ export default function ShoppingListTabScreen() {
     }
 
     setSubmittingItemId(recipe.id);
+
     try {
       await addRecipeMealItem(accessToken, {
         mealType: selectedMealType,
         recipeId: recipe.id,
         servings: parsedRecipeServings,
       });
+
       setRecipeQuery('');
       setRecipeResults([]);
       await loadDashboard();
@@ -288,11 +397,13 @@ export default function ShoppingListTabScreen() {
 
     const step = item.sourceType === 'RECIPE' ? 0.5 : item.unitType === 'PIECE' ? 1 : 25;
     const nextQuantity = direction === 'increase' ? item.quantity + step : item.quantity - step;
+
     if (nextQuantity <= 0) {
       return;
     }
 
     setSubmittingItemId(item.id);
+
     try {
       if (item.sourceType === 'RECIPE') {
         if (item.sourceId == null) {
@@ -316,6 +427,7 @@ export default function ShoppingListTabScreen() {
           unitType: item.unitType,
         });
       }
+
       await loadDashboard();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Ogun guncellenemedi.');
@@ -330,6 +442,7 @@ export default function ShoppingListTabScreen() {
     }
 
     setSubmittingItemId(itemId);
+
     try {
       await deleteMealItem(accessToken, itemId);
       await loadDashboard();
@@ -387,6 +500,7 @@ export default function ShoppingListTabScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
                 {MEAL_TYPES.map((mealType) => {
                   const active = selectedMealType === mealType.key;
+
                   return (
                     <Pressable
                       key={mealType.key}
@@ -401,6 +515,7 @@ export default function ShoppingListTabScreen() {
               <View style={styles.modeSwitch}>
                 {SEARCH_TYPES.map((item) => {
                   const active = searchType === item.key;
+
                   return (
                     <Pressable
                       key={item.key}
@@ -426,6 +541,7 @@ export default function ShoppingListTabScreen() {
                   <View style={styles.unitSwitch}>
                     {UNIT_TYPES.map((unitType) => {
                       const active = selectedUnitType === unitType.key;
+
                       return (
                         <Pressable
                           key={unitType.key}
@@ -475,29 +591,32 @@ export default function ShoppingListTabScreen() {
 
               {searchType === 'FOOD' &&
                 foodResults.map((product) => (
-                <View key={product.id} style={styles.foodCard}>
-                  <View style={styles.foodCardTop}>
-                    <View style={styles.foodCardTextWrap}>
-                      <Text style={styles.foodName}>{product.name}</Text>
-                      <Text style={styles.foodMeta}>
-                        {formatNumber(product.caloriesPer100g, ' kcal')} • P {formatNumber(product.proteinPer100g)} • C{' '}
-                        {formatNumber(product.carbsPer100g)} • Y {formatNumber(product.fatPer100g)}
-                      </Text>
+                  <View key={product.id} style={styles.foodCard}>
+                    <View style={styles.foodCardTop}>
+                      <View style={styles.foodCardTextWrap}>
+                        <Text style={styles.foodName}>{product.name}</Text>
+                        <Text style={styles.foodMeta}>
+                          {formatNumber(product.caloriesPer100g, ' kcal')} • P{' '}
+                          {formatNumber(product.proteinPer100g)} • C {formatNumber(product.carbsPer100g)} • Y{' '}
+                          {formatNumber(product.fatPer100g)}
+                        </Text>
+                      </View>
+
+                      <Pressable
+                        style={[styles.primaryButtonSmall, !foodQuantityValid ? styles.primaryButtonDisabled : null]}
+                        onPress={() => void handleAddFood(product)}
+                        disabled={!foodQuantityValid || submittingItemId === product.id}>
+                        <Text style={styles.primaryButtonText}>
+                          {submittingItemId === product.id ? '...' : 'Ekle'}
+                        </Text>
+                      </Pressable>
                     </View>
-                    <Pressable
-                      style={[styles.primaryButtonSmall, !foodQuantityValid ? styles.primaryButtonDisabled : null]}
-                      onPress={() => void handleAddFood(product)}
-                      disabled={!foodQuantityValid || submittingItemId === product.id}>
-                      <Text style={styles.primaryButtonText}>
-                        {submittingItemId === product.id ? '...' : 'Ekle'}
-                      </Text>
-                    </Pressable>
+
+                    {selectedUnitType === 'PIECE' && product.pieceGramWeight ? (
+                      <Text style={styles.foodSubMeta}>1 tane: {formatNumber(product.pieceGramWeight, ' g')}</Text>
+                    ) : null}
                   </View>
-                  {selectedUnitType === 'PIECE' && product.pieceGramWeight ? (
-                    <Text style={styles.foodSubMeta}>1 tane: {formatNumber(product.pieceGramWeight, ' g')}</Text>
-                  ) : null}
-                </View>
-              ))}
+                ))}
 
               {searchType === 'RECIPE' &&
                 recipeResults.map((recipe) => (
@@ -510,6 +629,7 @@ export default function ShoppingListTabScreen() {
                           {recipe.servings ? `${formatNumber(recipe.servings)} porsiyon` : 'Porsiyon bilgisi yok'}
                         </Text>
                       </View>
+
                       <Pressable
                         style={[styles.primaryButtonSmall, !recipeServingsValid ? styles.primaryButtonDisabled : null]}
                         onPress={() => void handleAddRecipe(recipe)}
@@ -519,6 +639,7 @@ export default function ShoppingListTabScreen() {
                         </Text>
                       </Pressable>
                     </View>
+
                     <Text style={styles.foodSubMeta}>
                       Hazirlama: {recipe.readyInMinutes ? `${recipe.readyInMinutes} dk` : 'Bilinmiyor'}
                     </Text>
@@ -531,14 +652,17 @@ export default function ShoppingListTabScreen() {
                 <Text style={styles.metricLabel}>Bugun Yenilen</Text>
                 <Text style={styles.metricValue}>{formatNumber(dailyMeals?.totalCalories, ' kcal')}</Text>
               </View>
+
               <View style={styles.metricCard}>
                 <Text style={styles.metricLabel}>Protein</Text>
                 <Text style={styles.metricValue}>{formatNumber(dailyMeals?.totalProtein, ' g')}</Text>
               </View>
+
               <View style={styles.metricCard}>
                 <Text style={styles.metricLabel}>Karbonhidrat</Text>
                 <Text style={styles.metricValue}>{formatNumber(dailyMeals?.totalCarbs, ' g')}</Text>
               </View>
+
               <View style={styles.metricCard}>
                 <Text style={styles.metricLabel}>Yag</Text>
                 <Text style={styles.metricValue}>{formatNumber(dailyMeals?.totalFat, ' g')}</Text>
@@ -547,6 +671,7 @@ export default function ShoppingListTabScreen() {
 
             <View style={styles.historySection}>
               <Text style={styles.sectionTitle}>Bugunun Ogunleri</Text>
+
               {dailyMeals?.meals?.length ? (
                 dailyMeals.meals.map((meal) => (
                   <View key={meal.id} style={styles.recordCard}>
@@ -569,9 +694,13 @@ export default function ShoppingListTabScreen() {
                             <Text style={styles.mealItemMeta}>
                               {item.sourceType === 'RECIPE'
                                 ? `${formatNumber(item.quantity)} porsiyon • ${formatNumber(item.calories, ' kcal')}`
-                                : `${formatNumber(item.quantity)} ${getUnitLabel(item.unitType).toLowerCase()} • ${formatNumber(item.gramEquivalent, ' g')} • ${formatNumber(item.calories, ' kcal')}`}
+                                : `${formatNumber(item.quantity)} ${getUnitLabel(item.unitType).toLowerCase()} • ${formatNumber(
+                                    item.gramEquivalent,
+                                    ' g'
+                                  )} • ${formatNumber(item.calories, ' kcal')}`}
                             </Text>
                           </View>
+
                           <Pressable
                             style={styles.deleteButton}
                             onPress={() => void handleDeleteItem(item.id)}
@@ -587,7 +716,9 @@ export default function ShoppingListTabScreen() {
                             disabled={submittingItemId === item.id}>
                             <Text style={styles.adjustButtonText}>-</Text>
                           </Pressable>
+
                           <Text style={styles.adjustLabel}>{getMealItemAdjustLabel(item)}</Text>
+
                           <Pressable
                             style={styles.adjustButton}
                             onPress={() => void handleUpdateItem(meal.mealType, item, 'increase')}
@@ -602,7 +733,9 @@ export default function ShoppingListTabScreen() {
               ) : (
                 <View style={styles.emptyCard}>
                   <Text style={styles.emptyTitle}>Bugun henuz ogun eklenmedi</Text>
-                  <Text style={styles.emptyBody}>Yukardan bir urun ya da recipe arayip kahvalti, ogle, aksam ya da ara ogune ekleyebilirsin.</Text>
+                  <Text style={styles.emptyBody}>
+                    Yukardan bir urun ya da recipe arayip kahvalti, ogle, aksam ya da ara ogune ekleyebilirsin.
+                  </Text>
                 </View>
               )}
             </View>
@@ -611,19 +744,31 @@ export default function ShoppingListTabScreen() {
 
         {!loading ? (
           <>
+            <Pressable
+              style={[styles.primaryButton, syncingHealth ? styles.primaryButtonDisabled : null]}
+              onPress={() => void syncHealthData()}
+              disabled={syncingHealth}>
+              <Text style={styles.primaryButtonText}>
+                {syncingHealth ? 'Senkronize ediliyor...' : 'Apple Health Senkronize Et'}
+              </Text>
+            </Pressable>
+
             <View style={styles.metricsGrid}>
               <View style={styles.metricCard}>
                 <Text style={styles.metricLabel}>Bugun Kalori</Text>
                 <Text style={styles.metricValue}>{formatNumber(todayRecord?.kalori, ' kcal')}</Text>
               </View>
+
               <View style={styles.metricCard}>
                 <Text style={styles.metricLabel}>Bugun Adim</Text>
                 <Text style={styles.metricValue}>{formatNumber(todayRecord?.adim)}</Text>
               </View>
+
               <View style={styles.metricCard}>
                 <Text style={styles.metricLabel}>Gunluk Kalori Toplami</Text>
                 <Text style={styles.metricValue}>{formatNumber(totalHealthCalories, ' kcal')}</Text>
               </View>
+
               <View style={styles.metricCard}>
                 <Text style={styles.metricLabel}>Gunluk Adim Toplami</Text>
                 <Text style={styles.metricValue}>{formatNumber(totalSteps)}</Text>
@@ -633,10 +778,11 @@ export default function ShoppingListTabScreen() {
             {latestRecord ? (
               <View style={styles.highlightCard}>
                 <Text style={styles.highlightEyebrow}>Son Senkron</Text>
-                <Text style={styles.highlightTitle}>{formatDateLabel(latestRecord.createdAt)}</Text>
+                <Text style={styles.highlightTitle}>{formatDateLabel(latestRecord.date)}</Text>
                 <Text style={styles.highlightBody}>
-                  En son gelen veri {formatNumber(latestRecord.adim)} adim ve {formatNumber(latestRecord.kalori, ' kcal')}.
-                  Gunluk hesaplarda ayni gunden sadece en yeni kayit kullaniliyor.
+                  En son gelen veri {formatNumber(latestRecord.adim)} adim ve{' '}
+                  {formatNumber(latestRecord.kalori, ' kcal')}. Gunluk hesaplarda ayni gunden sadece en yeni kayit
+                  kullaniliyor.
                 </Text>
               </View>
             ) : null}
@@ -644,21 +790,25 @@ export default function ShoppingListTabScreen() {
             {dailyLatestRecords.length > 0 ? (
               <View style={styles.historySection}>
                 <Text style={styles.sectionTitle}>Gunluk Ozet</Text>
+
                 {dailyLatestRecords.map((record) => (
                   <View key={`daily-${record.id}`} style={styles.recordCard}>
                     <View style={styles.dailyHeader}>
-                      <Text style={styles.dailyTitle}>{formatDayLabel(record.createdAt)}</Text>
+                      <Text style={styles.dailyTitle}>{formatDayLabel(record.date)}</Text>
                       <Text style={styles.dailyBadge}>Gun sonu degeri</Text>
                     </View>
+
                     <View style={styles.recordRow}>
                       <Text style={styles.recordLabel}>Kalori</Text>
                       <Text style={styles.recordValue}>{formatNumber(record.kalori, ' kcal')}</Text>
                     </View>
+
                     <View style={styles.recordRow}>
                       <Text style={styles.recordLabel}>Adim</Text>
                       <Text style={styles.recordValue}>{formatNumber(record.adim)}</Text>
                     </View>
-                    <Text style={styles.recordDate}>Son guncelleme: {formatDateLabel(record.createdAt)}</Text>
+
+                    <Text style={styles.recordDate}>Son guncelleme: {formatDateLabel(record.date)}</Text>
                   </View>
                 ))}
               </View>

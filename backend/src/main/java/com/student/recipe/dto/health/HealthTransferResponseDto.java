@@ -1,13 +1,13 @@
 package com.student.recipe.dto.health;
 
-import java.time.Instant;
+import java.time.LocalDate;
 
 public record HealthTransferResponseDto(
         boolean success,
         Long id,
         Integer adim,
         Double kalori,
-        Instant createdAt,
+        LocalDate date,
         String message
 ) {
 }

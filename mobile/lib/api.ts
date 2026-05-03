@@ -162,12 +162,13 @@ export type AssistantVoiceResponse = {
   suggestions: string[];
 };
 
+// YENİ
 export type HealthTransferResponse = {
   success: boolean;
   id: number;
   adim: number;
   kalori: number;
-  createdAt: string;
+  date: string;        // Backend LocalDate → "2025-04-30" formatında gelir
   message: string;
 };
 
@@ -279,7 +280,7 @@ export function getApiBaseUrl(): string {
     return 'http://10.0.2.2:8080';
   }
 
-  return 'http://localhost:8080';
+return 'http://172.16.1.134:8080';
 }
 
 export async function register(payload: RegisterRequest): Promise<AuthResponse> {
@@ -459,9 +460,23 @@ export async function chatWithAssistantVoice(
   });
 }
 
-export async function getHealthTransferRecords(): Promise<HealthTransferResponse[]> {
+// YENİ
+export async function getHealthTransferRecords(accessToken?: string): Promise<HealthTransferResponse[]> {
   return request<HealthTransferResponse[]>('/api/saglik/kayitlar', {
     method: 'GET',
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
+}
+
+export async function sendHealthData(payload: {
+  adim: number;
+  kalori: number;
+  date: string;
+}): Promise<HealthTransferResponse> {
+  return request<HealthTransferResponse>('/api/saglik/aktar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
   });
 }
 

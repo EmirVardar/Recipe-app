@@ -9,10 +9,17 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
+      "newArchEnabled": true,
       "supportsTablet": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Sesli sohbet icin mikrofon erisimi gerekiyor."
-      }
+        "NSMicrophoneUsageDescription": "Sesli sohbet icin mikrofon erisimi gerekiyor.",
+        "NSHealthShareUsageDescription": "Adim ve kalori verilerini okumak icin HealthKit erisimi gerekiyor.",
+        "NSHealthUpdateUsageDescription": "Saglik verisi yazmak icin HealthKit erisimi gerekiyor."
+      },
+      "entitlements": {
+        "com.apple.developer.healthkit": true
+      },
+      "bundleIdentifier": "com.emirvardar.recipulse2"
     },
     "android": {
       "adaptiveIcon": {
@@ -22,7 +29,12 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "package": "com.emirvardar.recipulse"
     },
     "web": {
       "output": "static",

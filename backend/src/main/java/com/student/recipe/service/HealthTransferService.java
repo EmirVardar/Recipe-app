@@ -1,5 +1,6 @@
 package com.student.recipe.service;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import org.springframework.http.HttpStatus;
@@ -28,6 +29,7 @@ public class HealthTransferService {
         HealthTransferRecord record = new HealthTransferRecord();
         record.setAdim(request.adim());
         record.setKalori(request.kalori());
+        record.setDate(request.date() != null ? request.date() : LocalDate.now());
 
         HealthTransferRecord saved = healthTransferRecordRepository.save(record);
 
@@ -36,21 +38,21 @@ public class HealthTransferService {
                 saved.getId(),
                 saved.getAdim(),
                 saved.getKalori(),
-                saved.getCreatedAt(),
+                saved.getDate(),
                 "Saglik verisi kaydedildi"
         );
     }
 
     @Transactional(readOnly = true)
     public List<HealthTransferResponseDto> getRecentRecords() {
-        return healthTransferRecordRepository.findTop100ByOrderByCreatedAtDesc()
+        return healthTransferRecordRepository.findTop100ByOrderByDateDesc()
                 .stream()
                 .map(record -> new HealthTransferResponseDto(
                         true,
                         record.getId(),
                         record.getAdim(),
                         record.getKalori(),
-                        record.getCreatedAt(),
+                        record.getDate(),
                         "Saglik verisi listelendi"
                 ))
                 .toList();
