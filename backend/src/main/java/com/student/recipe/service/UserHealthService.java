@@ -1,5 +1,7 @@
 package com.student.recipe.service;
 
+import java.time.LocalDate;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -73,7 +75,7 @@ public class UserHealthService {
 
         return userProfileRepository.findByUserId(user.getId())
                 .map(profile -> new ProfileResponseDto(
-                        profile.getAge(),
+                        profile.getBirthDate(),
                         profile.getSex(),
                         profile.getHeightCm(),
                         profile.getWeightKg(),
@@ -119,7 +121,7 @@ public class UserHealthService {
 
         UserProfile profile = userProfileRepository.findByUserId(user.getId()).orElseGet(UserProfile::new);
         profile.setUser(user);
-        profile.setAge(request.age());
+        profile.setBirthDate(request.birthDate());
         profile.setSex(sex.name());
         profile.setHeightCm(request.heightCm());
         profile.setWeightKg(request.weightKg());
@@ -130,7 +132,7 @@ public class UserHealthService {
         user.setProfile(saved);
 
         return new ProfileResponseDto(
-                saved.getAge(),
+                saved.getBirthDate(),
                 saved.getSex(),
                 saved.getHeightCm(),
                 saved.getWeightKg(),
@@ -193,8 +195,14 @@ public class UserHealthService {
     }
 
     private void validateProfileRequest(ProfileUpdateRequestDto request) {
-        if (request.age() == null || request.age() < 1 || request.age() > 120) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Age must be between 1 and 120");
+        if (request.birthDate() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Birth date is required");
+        }
+        if (request.birthDate().isAfter(LocalDate.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Birth date cannot be in the future");
+        }
+        if (request.birthDate().isBefore(LocalDate.now().minusYears(120))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Birth date is too far in the past");
         }
         if (isBlank(request.sex())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sex is required");
@@ -230,7 +238,7 @@ public class UserHealthService {
     }
 
     private boolean isProfileComplete(UserProfile profile) {
-        return profile.getAge() != null
+        return profile.getBirthDate() != null
                 && !isBlank(profile.getSex())
                 && profile.getHeightCm() != null
                 && profile.getHeightCm() > 0

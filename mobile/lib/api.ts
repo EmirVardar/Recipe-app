@@ -33,7 +33,7 @@ export type OnboardingStatusResponse = {
 };
 
 export type ProfileUpdateRequest = {
-  age: number;
+  birthDate: string;
   sex: string;
   heightCm: number;
   weightKg: number;
@@ -41,7 +41,7 @@ export type ProfileUpdateRequest = {
   goal: string;
 };
 export type ProfileResponse = {
-  age: number | null;
+  birthDate: string | null;
   sex: string | null;
   heightCm: number | null;
   weightKg: number | null;
@@ -192,6 +192,27 @@ export type MealLogItemCreateRequest = {
   unitType: string;
 };
 
+export type FridgeItemCreateRequest = {
+  foodProductId: number;
+  quantity: number;
+  unitType: string;
+};
+
+export type FridgeItemResponse = {
+  id: number;
+  foodProductId: number;
+  foodName: string;
+  quantity: number;
+  unitType: string;
+  gramEquivalent: number;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  defaultGramWeight: number | null;
+  pieceGramWeight: number | null;
+};
+
 export type RecipeMealLogItemCreateRequest = {
   logDate?: string;
   mealType: string;
@@ -280,7 +301,7 @@ export function getApiBaseUrl(): string {
     return 'http://10.0.2.2:8080';
   }
 
-return 'http://172.16.1.134:8080';
+return 'http://172.16.1.42:8080';
 }
 
 export async function register(payload: RegisterRequest): Promise<AuthResponse> {
@@ -491,6 +512,44 @@ export async function searchFoodProducts(
 
   return request<FoodProductSearchItemResponse[]>(`/api/foods?${params.toString()}`, {
     method: 'GET',
+  });
+}
+
+export async function getFridgeItems(accessToken: string): Promise<FridgeItemResponse[]> {
+  return request<FridgeItemResponse[]>('/api/fridge/items', {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+export async function addFridgeItem(accessToken: string, payload: FridgeItemCreateRequest) {
+  return request<FridgeItemResponse>('/api/fridge/items', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateFridgeItem(accessToken: string, itemId: number, payload: FridgeItemCreateRequest) {
+  return request<FridgeItemResponse>(`/api/fridge/items/${itemId}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteFridgeItem(accessToken: string, itemId: number) {
+  return request<void>(`/api/fridge/items/${itemId}`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
   });
 }
 

@@ -14,12 +14,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import HealthKit, { BiologicalSex } from '@kingstinct/react-native-healthkit';
 
 import { getMedical, getNutrition, getProfile, login, register, updateMedical, updateNutrition, updateProfile } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 type ProfileFormState = {
-  age: string;
+  birthDate: string;
   sex: string;
   heightCm: string;
   weightKg: string;
@@ -93,11 +94,12 @@ export default function ProfileTabScreen() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingNutrition, setSavingNutrition] = useState(false);
   const [savingMedical, setSavingMedical] = useState(false);
+  const [prefillingHealthProfile, setPrefillingHealthProfile] = useState(false);
   const [prefillDone, setPrefillDone] = useState(false);
   const [detailPanel, setDetailPanel] = useState<DetailPanel>('editProfile');
   const panelTranslateX = useRef(new Animated.Value(0)).current;
   const [profileForm, setProfileForm] = useState<ProfileFormState>({
-    age: '',
+    birthDate: '',
     sex: '',
     heightCm: '',
     weightKg: '',
@@ -164,6 +166,35 @@ export default function ProfileTabScreen() {
       .toUpperCase();
   };
 
+  const formatDateInput = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatMetricInput = (value: number, digits = 1): string => {
+    if (!Number.isFinite(value)) {
+      return '';
+    }
+
+    const rounded = Number(value.toFixed(digits));
+    return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+  };
+
+  const mapBiologicalSexToProfileValue = (biologicalSex: number): string => {
+    if (biologicalSex === BiologicalSex.male) {
+      return 'ERKEK';
+    }
+    if (biologicalSex === BiologicalSex.female) {
+      return 'KADIN';
+    }
+    if (biologicalSex === BiologicalSex.other) {
+      return 'DIGER';
+    }
+    return '';
+  };
+
   const toggleMulti = (value: string, setSelected: (updater: (prev: string[]) => string[]) => void) => {
     setSelected((prev) => {
       if (value === 'Yok') {
@@ -188,7 +219,7 @@ export default function ProfileTabScreen() {
         ]);
 
         setProfileForm({
-          age: profile.age != null ? String(profile.age) : '',
+          birthDate: profile.birthDate ?? '',
           sex: normalizeEnumValue(profile.sex),
           heightCm: profile.heightCm != null ? String(profile.heightCm) : '',
           weightKg: profile.weightKg != null ? String(profile.weightKg) : '',
@@ -232,12 +263,17 @@ export default function ProfileTabScreen() {
   }, [accessToken, prefillDone]);
 
   const onSaveProfile = async () => {
-    const age = Number(profileForm.age);
+    const birthDate = profileForm.birthDate.trim();
     const heightCm = Number(profileForm.heightCm);
     const weightKg = Number(profileForm.weightKg);
 
-    if (!age || !heightCm || !weightKg || !profileForm.sex || !profileForm.activityLevel || !profileForm.goal) {
+    if (!birthDate || !heightCm || !weightKg || !profileForm.sex || !profileForm.activityLevel || !profileForm.goal) {
       Alert.alert('Eksik bilgi', 'Lutfen tum profile alanlarini doldur.');
+      return;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
+      Alert.alert('Gecersiz tarih', 'Dogum tarihini YYYY-AA-GG formatinda gir.');
       return;
     }
 
@@ -249,7 +285,7 @@ export default function ProfileTabScreen() {
     setSavingProfile(true);
     try {
       await updateProfile(accessToken, {
-        age,
+        birthDate,
         sex: profileForm.sex,
         heightCm,
         weightKg,
@@ -262,6 +298,63 @@ export default function ProfileTabScreen() {
       Alert.alert('Kaydetme hatasi', message);
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const onPrefillProfileFromHealth = async () => {
+    if (prefillingHealthProfile) {
+      return;
+    }
+
+    setPrefillingHealthProfile(true);
+
+    try {
+      const isAvailable = await HealthKit.isHealthDataAvailable();
+      if (!isAvailable) {
+        Alert.alert('Kullanilamiyor', 'Apple Saglik bu cihazda kullanilamiyor.');
+        return;
+      }
+
+      await HealthKit.requestAuthorization({
+        toRead: [
+          'HKCharacteristicTypeIdentifierDateOfBirth',
+          'HKCharacteristicTypeIdentifierBiologicalSex',
+          'HKQuantityTypeIdentifierHeight',
+          'HKQuantityTypeIdentifierBodyMass',
+        ],
+      });
+
+      const [birthDate, biologicalSex, heightSample, weightSample] = await Promise.all([
+        HealthKit.getDateOfBirthAsync(),
+        HealthKit.getBiologicalSexAsync(),
+        HealthKit.getMostRecentQuantitySample('HKQuantityTypeIdentifierHeight', 'm'),
+        HealthKit.getMostRecentQuantitySample('HKQuantityTypeIdentifierBodyMass', 'kg'),
+      ]);
+
+      const nextBirthDate = birthDate ? formatDateInput(birthDate) : '';
+      const nextSex = mapBiologicalSexToProfileValue(biologicalSex);
+      const nextHeightCm = heightSample ? formatMetricInput(heightSample.quantity * 100) : '';
+      const nextWeightKg = weightSample ? formatMetricInput(weightSample.quantity) : '';
+
+      if (!nextBirthDate && !nextSex && !nextHeightCm && !nextWeightKg) {
+        Alert.alert('Veri bulunamadi', 'Apple Saglik icinde doldurulacak profil verisi bulunamadi.');
+        return;
+      }
+
+      setProfileForm((prev) => ({
+        ...prev,
+        birthDate: nextBirthDate || prev.birthDate,
+        sex: nextSex || prev.sex,
+        heightCm: nextHeightCm || prev.heightCm,
+        weightKg: nextWeightKg || prev.weightKg,
+      }));
+
+      Alert.alert('Hazir', 'Bulunan Apple Saglik verileri profile dolduruldu. Kontrol edip kaydedebilirsin.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Apple Saglik verileri okunamadi.';
+      Alert.alert('Apple Saglik hatasi', message);
+    } finally {
+      setPrefillingHealthProfile(false);
     }
   };
 
@@ -650,12 +743,22 @@ export default function ProfileTabScreen() {
                   </View>
                 </View>
 
-                <Text style={styles.fieldLabel}>Yas</Text>
+                <Pressable
+                  style={[styles.healthPrefillButton, prefillingHealthProfile ? styles.healthPrefillButtonDisabled : null]}
+                  onPress={onPrefillProfileFromHealth}
+                  disabled={prefillingHealthProfile}>
+                  <Ionicons name="heart-outline" size={18} color="#065F46" />
+                  <Text style={styles.healthPrefillButtonText}>
+                    {prefillingHealthProfile ? 'Apple Saglik okunuyor...' : "Apple Saglik'tan doldur"}
+                  </Text>
+                </Pressable>
+
+                <Text style={styles.fieldLabel}>Dogum tarihi</Text>
                 <TextInput
-                  value={profileForm.age}
-                  onChangeText={(value) => setProfileForm((prev) => ({ ...prev, age: value }))}
-                  keyboardType="number-pad"
-                  placeholder="Yas"
+                  value={profileForm.birthDate}
+                  onChangeText={(value) => setProfileForm((prev) => ({ ...prev, birthDate: value }))}
+                  keyboardType="numbers-and-punctuation"
+                  placeholder="YYYY-AA-GG"
                   placeholderTextColor="#9CA3AF"
                   style={styles.input}
                 />
@@ -1089,6 +1192,27 @@ const styles = StyleSheet.create({
     fontSize: 40,
     fontWeight: '700',
     color: '#111827',
+  },
+  healthPrefillButton: {
+    marginBottom: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 18,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  healthPrefillButtonDisabled: {
+    opacity: 0.7,
+  },
+  healthPrefillButtonText: {
+    color: '#065F46',
+    fontSize: 14,
+    fontWeight: '700',
   },
   primaryButton: {
     marginTop: 6,

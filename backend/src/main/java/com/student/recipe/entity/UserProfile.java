@@ -1,5 +1,7 @@
 package com.student.recipe.entity;
 
+import java.time.LocalDate;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -29,7 +31,7 @@ public class UserProfile {
     private User user;
 
     @Column
-    private Integer age;
+    private LocalDate birthDate;
 
     @Column(length = 20)
     private String sex;

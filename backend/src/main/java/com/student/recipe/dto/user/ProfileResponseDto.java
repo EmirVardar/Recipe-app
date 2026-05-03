@@ -1,7 +1,9 @@
 package com.student.recipe.dto.user;
 
+import java.time.LocalDate;
+
 public record ProfileResponseDto(
-        Integer age,
+        LocalDate birthDate,
         String sex,
         Double heightCm,
         Double weightKg,

@@ -1,5 +1,7 @@
 package com.student.recipe.service.assistant;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.Arrays;
 import java.util.List;
 
@@ -48,7 +50,7 @@ public class UserAiProfileContextService {
         UserNutritionPreference nutrition = userNutritionPreferenceRepository.findByUserId(user.getId()).orElse(null);
 
         return new UserAiProfileContextDto(
-                profile != null ? profile.getAge() : null,
+                calculateAge(profile != null ? profile.getBirthDate() : null),
                 profile != null ? profile.getSex() : null,
                 profile != null ? profile.getHeightCm() : null,
                 profile != null ? profile.getWeightKg() : null,
@@ -75,5 +77,12 @@ public class UserAiProfileContextService {
                 .filter(value -> !value.isEmpty())
                 .filter(value -> !value.equalsIgnoreCase("none"))
                 .toList();
+    }
+
+    private Integer calculateAge(LocalDate birthDate) {
+        if (birthDate == null || birthDate.isAfter(LocalDate.now())) {
+            return null;
+        }
+        return Period.between(birthDate, LocalDate.now()).getYears();
     }
 }

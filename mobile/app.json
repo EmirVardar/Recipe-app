@@ -13,8 +13,8 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Sesli sohbet icin mikrofon erisimi gerekiyor.",
-        "NSHealthShareUsageDescription": "Adim ve kalori verilerini okumak icin HealthKit erisimi gerekiyor.",
-        "NSHealthUpdateUsageDescription": "Saglik verisi yazmak icin HealthKit erisimi gerekiyor."
+        "NSHealthShareUsageDescription": "Adim, uyku, kalori ve profil bilgilerini okumak icin HealthKit erisimi gerekiyor.",
+        "NSHealthUpdateUsageDescription": "Saglik verilerini senkronize etmek icin HealthKit erisimi gerekiyor."
       },
       "entitlements": {
         "com.apple.developer.healthkit": true

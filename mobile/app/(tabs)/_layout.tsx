@@ -34,6 +34,7 @@ export default function TabsLayout() {
           const iconByRoute: Record<string, keyof typeof Ionicons.glyphMap> = {
             index: 'home-outline',
             search: 'search-outline',
+            fridge: 'cube-outline',
             'my-recipes': 'heart-outline',
             health: 'fitness-outline',
             profile: 'person-outline',
@@ -42,6 +43,7 @@ export default function TabsLayout() {
           const focusedIconByRoute: Record<string, keyof typeof Ionicons.glyphMap> = {
             index: 'home',
             search: 'search',
+            fridge: 'cube',
             'my-recipes': 'heart',
             health: 'fitness',
             profile: 'person',
@@ -56,6 +58,7 @@ export default function TabsLayout() {
       })}>
       <Tabs.Screen name="index" options={{ title: 'Ana Sayfa' }} />
       <Tabs.Screen name="search" options={{ title: 'Ara' }} />
+      <Tabs.Screen name="fridge" options={{ title: 'Buzdolabi' }} />
       <Tabs.Screen name="my-recipes" options={{ title: 'Tariflerim' }} />
       <Tabs.Screen
         name="health"

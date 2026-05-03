@@ -172,65 +172,37 @@ export default function ShoppingListTabScreen() {
       today.setHours(0, 0, 0, 0);
       const now = new Date();
       const dateStr = now.toISOString().split('T')[0];
-      const stepSources = await HealthKit.querySources('HKQuantityTypeIdentifierStepCount');
-      const watchStepSources = stepSources.filter((source) =>
-        source.name.toLowerCase().includes('apple watch') || source.name.toLowerCase().includes('watch')
-      );
-
-      console.log(
-        'HealthKit step sources:',
-        stepSources.map((source) => ({ name: source.name, bundleIdentifier: source.bundleIdentifier }))
-      );
-      console.log(
-        'HealthKit watch step sources:',
-        watchStepSources.map((source) => ({ name: source.name, bundleIdentifier: source.bundleIdentifier }))
-      );
-
-      const stepSamples = await HealthKit.queryQuantitySamples(
-        'HKQuantityTypeIdentifierStepCount',
-        {
-          unit: 'count',
-          limit: 0,
-          filter: {
-            sources: watchStepSources.length > 0 ? watchStepSources : undefined,
-            date: {
-              startDate: today,
-              endDate: now,
+      const [stepStatistics, calorieStatistics] = await Promise.all([
+        HealthKit.queryStatisticsForQuantity(
+          'HKQuantityTypeIdentifierStepCount',
+          ['cumulativeSum'],
+          {
+            unit: 'count',
+            filter: {
+              date: {
+                startDate: today,
+                endDate: now,
+              },
             },
-          },
-        }
-      );
-      const adim = Math.round(stepSamples.reduce((sum, s) => sum + s.quantity, 0));
-
-      const calorieSources = await HealthKit.querySources('HKQuantityTypeIdentifierActiveEnergyBurned');
-      const watchCalorieSources = calorieSources.filter((source) =>
-        source.name.toLowerCase().includes('apple watch') || source.name.toLowerCase().includes('watch')
-      );
-
-      console.log(
-        'HealthKit calorie sources:',
-        calorieSources.map((source) => ({ name: source.name, bundleIdentifier: source.bundleIdentifier }))
-      );
-      console.log(
-        'HealthKit watch calorie sources:',
-        watchCalorieSources.map((source) => ({ name: source.name, bundleIdentifier: source.bundleIdentifier }))
-      );
-
-      const calorieSamples = await HealthKit.queryQuantitySamples(
-        'HKQuantityTypeIdentifierActiveEnergyBurned',
-        {
-          unit: 'kcal',
-          limit: 0,
-          filter: {
-            sources: watchCalorieSources.length > 0 ? watchCalorieSources : undefined,
-            date: {
-              startDate: today,
-              endDate: now,
+          }
+        ),
+        HealthKit.queryStatisticsForQuantity(
+          'HKQuantityTypeIdentifierActiveEnergyBurned',
+          ['cumulativeSum'],
+          {
+            unit: 'kcal',
+            filter: {
+              date: {
+                startDate: today,
+                endDate: now,
+              },
             },
-          },
-        }
-      );
-      const kalori = Math.round(calorieSamples.reduce((sum, s) => sum + s.quantity, 0));
+          }
+        ),
+      ]);
+
+      const adim = Math.round(stepStatistics.sumQuantity?.quantity ?? 0);
+      const kalori = Math.round(calorieStatistics.sumQuantity?.quantity ?? 0);
 
       await sendHealthData({ adim, kalori, date: dateStr });
       await loadDashboard();
@@ -335,6 +307,7 @@ export default function ShoppingListTabScreen() {
     () => dailyLatestRecords.reduce((sum, item) => sum + item.adim, 0),
     [dailyLatestRecords]
   );
+
 
   const parsedFoodQuantity = Number(foodQuantityInput.replace(',', '.'));
   const parsedRecipeServings = Number(recipeServingsInput.replace(',', '.'));
