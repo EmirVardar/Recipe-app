@@ -18,6 +18,7 @@ import com.student.recipe.entity.ConversationMessage;
 import com.student.recipe.entity.enums.ConversationMessageRole;
 import com.student.recipe.repository.UserRepository;
 import com.student.recipe.service.MealTrackingService;
+import com.student.recipe.service.UserFridgeService;
 import com.student.recipe.vector.DocumentMatch;
 import com.student.recipe.vector.EmbeddingVectorService;
 
@@ -61,6 +62,20 @@ public class AssistantChatService {
             {
               "intent": "PERSONAL_QUERY"
             }
+
+            If the user asks what they have in their fridge, what ingredients are left,
+            what they can cook with ingredients at home, or asks for recipe ideas based on fridge items, return:
+            {
+              "intent": "FRIDGE_QUERY"
+            }
+
+            If the user wants to add something to their fridge, return:
+            {
+              "intent": "FRIDGE_ADD_ITEM",
+              "food_name": "<extracted food name>",
+              "quantity": 1.0,
+              "unit_type": "<GRAM|PIECE>"
+            }
             
             For everything else (recipe suggestions, food questions, general nutrition advice), return:
             {
@@ -84,6 +99,9 @@ public class AssistantChatService {
     private final ConversationMemoryService conversationMemoryService;
     private final UserRepository userRepository;
     private final MealTrackingService mealTrackingService;
+    private final UserFridgeService userFridgeService;
+    private final UserFridgeContextService userFridgeContextService;
+    private final UserDailyHealthContextService userDailyHealthContextService;
     private final ObjectMapper objectMapper;
 
     public AssistantChatService(
@@ -94,6 +112,9 @@ public class AssistantChatService {
             ConversationMemoryService conversationMemoryService,
             UserRepository userRepository,
             MealTrackingService mealTrackingService,
+            UserFridgeService userFridgeService,
+            UserFridgeContextService userFridgeContextService,
+            UserDailyHealthContextService userDailyHealthContextService,
             ObjectMapper objectMapper
     ) {
         this.openAiService = openAiService;
@@ -103,6 +124,9 @@ public class AssistantChatService {
         this.conversationMemoryService = conversationMemoryService;
         this.userRepository = userRepository;
         this.mealTrackingService = mealTrackingService;
+        this.userFridgeService = userFridgeService;
+        this.userFridgeContextService = userFridgeContextService;
+        this.userDailyHealthContextService = userDailyHealthContextService;
         this.objectMapper = objectMapper;
     }
 
@@ -135,6 +159,14 @@ public class AssistantChatService {
 
         if ("PERSONAL_QUERY".equals(intent)) {
             return handlePersonalQuery(userEmail, message, conversation, historyBlock);
+        }
+
+        if ("FRIDGE_QUERY".equals(intent)) {
+            return handleFridgeQuery(userEmail, message, conversation, historyBlock);
+        }
+
+        if ("FRIDGE_ADD_ITEM".equals(intent)) {
+            return handleFridgeAddIntent(userEmail, message, intentJson, conversation, historyBlock);
         }
 
         // 4) OTHER → Normal RAG flow
@@ -170,7 +202,7 @@ public class AssistantChatService {
 
         if (rejected) {
             conversationMemoryService.clearPendingAction(conversation);
-            String answer = "Got it, I won't add it to your log. Let me know if you need anything else!";
+            String answer = "Got it, I won't make that change. Let me know if you need anything else!";
             conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
             conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
             return new AssistantChatResponseDto(
@@ -180,7 +212,7 @@ public class AssistantChatService {
             );
         }
 
-        String answer = "I'm waiting for your confirmation. Should I add this to your meal log? Reply 'yes' to confirm or 'no' to cancel.";
+        String answer = "I'm waiting for your confirmation. Reply 'yes' to confirm or 'no' to cancel.";
         conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
         conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
         return new AssistantChatResponseDto(
@@ -190,10 +222,41 @@ public class AssistantChatService {
         );
     }
 
+    private String executePendingAction(String userEmail, Conversation conversation, Map<String, Object> actionData) {
+        try {
+            String sourceType = (String) actionData.get("sourceType");
+
+            if ("FRIDGE".equals(sourceType)) {
+                Long foodId = ((Number) actionData.get("sourceId")).longValue();
+                String sourceName = (String) actionData.get("sourceName");
+                double quantity = ((Number) actionData.get("quantity")).doubleValue();
+                String unitType = (String) actionData.get("unitType");
+
+                userFridgeService.addItem(userEmail, new com.student.recipe.dto.fridge.FridgeItemCreateRequestDto(
+                        foodId, quantity, unitType
+                ));
+
+                return String.format("✓ **%s** has been added to your fridge (%s %s).",
+                        sourceName,
+                        formatCompactNumber(quantity),
+                        "PIECE".equals(unitType) ? "piece" + (quantity == 1 ? "" : "s") : "g");
+            }
+        } catch (Exception ignored) {
+            return "Sorry, I couldn't complete that fridge action. Please try again.";
+        }
+
+        return null;
+    }
+
     private String executePendingAction(String userEmail, Conversation conversation) {
         try {
             String data = conversation.getPendingActionData();
             Map<String, Object> actionData = objectMapper.readValue(data, Map.class);
+
+            String customActionResult = executePendingAction(userEmail, conversation, actionData);
+            if (customActionResult != null) {
+                return customActionResult;
+            }
 
             String sourceType = (String) actionData.get("sourceType");
             String mealType = (String) actionData.get("mealType");
@@ -327,11 +390,14 @@ public class AssistantChatService {
         UserAiProfileContextDto context = userAiProfileContextService.buildContext(userEmail);
         String profileContext = userAiContextPromptBuilder.buildProfileParagraph(context);
         String dailyNutritionContext = buildDailyNutritionContext(userEmail);
+        String dailyHealthContext = userDailyHealthContextService.buildTodayHealthSummary();
 
         String userPrompt = """
                 === USER PROFILE ===
                 %s
                 
+                %s
+
                 %s
                 
                 === CONVERSATION HISTORY ===
@@ -342,9 +408,10 @@ public class AssistantChatService {
                 
                 Answer based on the user's profile and today's nutrition log only.
                 Be specific with numbers. Calculate remaining calories if asked.
-                """.formatted(
+        """.formatted(
                 profileContext,
                 dailyNutritionContext,
+                dailyHealthContext,
                 historyBlock.isBlank() ? "(No previous conversation)" : historyBlock,
                 message.trim()
         );
@@ -369,6 +436,7 @@ public class AssistantChatService {
         UserAiProfileContextDto context = userAiProfileContextService.buildContext(userEmail);
         String profileContext = userAiContextPromptBuilder.buildProfileParagraph(context);
         String dailyNutritionContext = buildDailyNutritionContext(userEmail);
+        String dailyHealthContext = userDailyHealthContextService.buildTodayHealthSummary();
 
         List<DocumentMatch> matches = vectorService.findRelevant(message.trim(), 5);
         String ragContext = buildRagContext(matches);
@@ -377,6 +445,8 @@ public class AssistantChatService {
                 === USER PROFILE ===
                 %s
                 
+                %s
+
                 %s
                 
                 === CONVERSATION HISTORY ===
@@ -389,9 +459,10 @@ public class AssistantChatService {
                 %s
                 
                 Answer based on the context above. Tailor the response to the user profile.
-                """.formatted(
+        """.formatted(
                 profileContext,
                 dailyNutritionContext,
+                dailyHealthContext,
                 historyBlock.isBlank() ? "(No previous conversation)" : historyBlock,
                 ragContext,
                 message.trim()
@@ -407,6 +478,120 @@ public class AssistantChatService {
                 List.of("This response is for general informational purposes and does not replace medical advice."),
                 List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian.")
         );
+    }
+
+    private AssistantChatResponseDto handleFridgeQuery(
+            String userEmail, String message, Conversation conversation, String historyBlock) {
+
+        UserAiProfileContextDto context = userAiProfileContextService.buildContext(userEmail);
+        String profileContext = userAiContextPromptBuilder.buildProfileParagraph(context);
+        String dailyNutritionContext = buildDailyNutritionContext(userEmail);
+        String dailyHealthContext = userDailyHealthContextService.buildTodayHealthSummary();
+        String fridgeContext = userFridgeContextService.buildFridgeContext(userEmail);
+
+        String userPrompt = """
+                === USER PROFILE ===
+                %s
+
+                %s
+
+                %s
+
+                %s
+
+                === CONVERSATION HISTORY ===
+                %s
+
+                === USER QUESTION ===
+                %s
+
+                Answer using the fridge items as the primary constraint.
+                If the user asks what they can cook, prioritize ideas that mostly use the listed fridge items.
+                If important ingredients are missing, say so clearly.
+                If the fridge is empty, say that directly and suggest what to buy.
+                Tailor all suggestions to the user's profile and restrictions.
+        """.formatted(
+                profileContext,
+                dailyNutritionContext,
+                dailyHealthContext,
+                fridgeContext,
+                historyBlock.isBlank() ? "(No previous conversation)" : historyBlock,
+                message.trim()
+        );
+
+        String answer = openAiService.chat(SYSTEM_PROMPT, userPrompt);
+
+        conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
+        conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
+
+        return new AssistantChatResponseDto(
+                answer,
+                List.of("This response is for general informational purposes and does not replace medical advice."),
+                List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian.")
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    private AssistantChatResponseDto handleFridgeAddIntent(
+            String userEmail, String message, String intentJson,
+            Conversation conversation, String historyBlock) {
+
+        try {
+            Map<String, Object> intentData = objectMapper.readValue(intentJson, Map.class);
+            String foodName = (String) intentData.get("food_name");
+            double quantity = ((Number) intentData.getOrDefault("quantity", 100.0)).doubleValue();
+            String unitType = (String) intentData.getOrDefault("unit_type", "GRAM");
+
+            List<DocumentMatch> matches = vectorService.findRelevant(foodName, 5);
+            DocumentMatch bestMatch = matches.stream()
+                    .filter(m -> m.distance() <= RELEVANCE_THRESHOLD)
+                    .filter(m -> "food".equals(m.metadata().get("kind")))
+                    .findFirst()
+                    .orElse(null);
+
+            if (bestMatch == null) {
+                String answer = String.format(
+                        "I couldn't find '%s' in my food database. Could you try a more specific product name?",
+                        foodName
+                );
+                conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
+                conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
+                return new AssistantChatResponseDto(answer,
+                        List.of("This response is for general informational purposes and does not replace medical advice."),
+                        List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian."));
+            }
+
+            Long foodId = Long.parseLong(bestMatch.metadata().get("id").toString());
+            String foundFoodName = bestMatch.metadata().get("name") != null
+                    ? bestMatch.metadata().get("name").toString() : foodName;
+
+            Map<String, Object> actionData = Map.of(
+                    "sourceType", "FRIDGE",
+                    "sourceId", foodId,
+                    "sourceName", foundFoodName,
+                    "quantity", quantity,
+                    "unitType", normalizeUnitType(unitType)
+            );
+            conversationMemoryService.setPendingAction(
+                    conversation, "FRIDGE_ADD_ITEM", objectMapper.writeValueAsString(actionData));
+
+            String answer = String.format(
+                    "I found **%s**. Should I add %s %s to your fridge? Reply 'yes' to confirm or 'no' to cancel.",
+                    foundFoodName,
+                    formatCompactNumber(quantity),
+                    "PIECE".equals(normalizeUnitType(unitType))
+                            ? "piece" + (quantity == 1 ? "" : "s")
+                            : "g"
+            );
+
+            conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
+            conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
+            return new AssistantChatResponseDto(answer,
+                    List.of("This response is for general informational purposes and does not replace medical advice."),
+                    List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian."));
+        } catch (Exception e) {
+            return handleNormalChat(userEmail, message, conversation, historyBlock);
+        }
     }
 
     // ── HELPERS ─────────────────────────────────────────────────────
@@ -516,5 +701,20 @@ public class AssistantChatService {
             sb.append(role).append(": ").append(content).append("\n");
         }
         return sb.toString().trim();
+    }
+
+    private String normalizeUnitType(String unitType) {
+        if (unitType == null) {
+            return "GRAM";
+        }
+        String normalized = unitType.trim().replace('-', '_').replace(' ', '_').toUpperCase();
+        return "PIECE".equals(normalized) ? "PIECE" : "GRAM";
+    }
+
+    private String formatCompactNumber(double value) {
+        if (Math.floor(value) == value) {
+            return String.valueOf((int) value);
+        }
+        return String.format(java.util.Locale.US, "%.1f", value);
     }
 }
