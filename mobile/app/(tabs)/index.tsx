@@ -24,12 +24,12 @@ import {
 import { useAuth } from '@/lib/auth';
 
 const CATEGORY_CHIPS = [
-  { label: 'All', value: '' },
-  { label: 'Breakfast', value: 'breakfast' },
-  { label: 'Salad', value: 'salad' },
-  { label: 'Soup', value: 'soup' },
-  { label: 'Dessert', value: 'dessert' },
-  { label: 'Main', value: 'main' },
+  { label: 'Tumu', value: '' },
+  { label: 'Kahvalti', value: 'breakfast' },
+  { label: 'Salata', value: 'salad' },
+  { label: 'Corba', value: 'soup' },
+  { label: 'Tatli', value: 'dessert' },
+  { label: 'Ana Yemek', value: 'main' },
 ];
 
 function formatValue(value: number | null | undefined, suffix = '') {
@@ -44,23 +44,23 @@ function formatValue(value: number | null | undefined, suffix = '') {
 function formatCategoryLabel(category: string | null | undefined) {
   switch (category) {
     case 'breakfast':
-      return 'Breakfast';
+      return 'Kahvalti';
     case 'lunch':
-      return 'Lunch';
+      return 'Ogle Yemegi';
     case 'dinner':
-      return 'Dinner';
+      return 'Aksam Yemegi';
     case 'dessert':
-      return 'Dessert';
+      return 'Tatli';
     case 'snack':
-      return 'Snack';
+      return 'Atistirmalik';
     case 'drink':
-      return 'Drink';
+      return 'Icecek';
     case 'soup':
-      return 'Soup';
+      return 'Corba';
     case 'salad':
-      return 'Salad';
+      return 'Salata';
     default:
-      return 'Main';
+      return 'Ana Yemek';
   }
 }
 
@@ -139,7 +139,7 @@ export default function HomeTabScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadRecipes(true)} />}>
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>ReciPulse Feed</Text>
+          <Text style={styles.eyebrow}>ReciPulse Kesfet</Text>
           <Text style={styles.title}>Tum Tarifler</Text>
           <Text style={styles.subtitle}>
             Begendigin tarifleri kalp ile kaydet. Favoriye eklediklerin direkt Tariflerim sekmesine duser.

@@ -4,21 +4,21 @@ import { AssistantChatPanel } from '@/components/assistant-chat-panel';
 
 export default function AssistantChatScreen() {
   const params = useLocalSearchParams<{ recipeId?: string; recipeTitle?: string }>();
-  const recipeTitle = typeof params.recipeTitle === 'string' ? params.recipeTitle : 'this recipe';
+  const recipeTitle = typeof params.recipeTitle === 'string' ? params.recipeTitle : 'bu tarif';
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Ask AI', headerShown: true }} />
+      <Stack.Screen options={{ title: 'AI\'a Sor', headerShown: true }} />
       <AssistantChatPanel
-        eyebrow="Recipe Assistant"
+        eyebrow="Tarif Asistani"
         title={recipeTitle}
-        subtitle="Ask by text or voice and get quick help about ingredients, steps, cooking logic, or healthier alternatives."
-        welcomeMessage={`You can ask anything about ${recipeTitle}. I can help with ingredients, steps, cooking logic, or healthier alternatives.`}
-        placeholder="Write your recipe question..."
-        quickPrompts={['How can I make this recipe healthier?', 'What pairs well with this recipe?']}
+        subtitle="Yazi veya sesle sor ve malzemeler, adimlar, pisirme mantigi ya da daha saglikli alternatifler hakkinda hizli destek al."
+        welcomeMessage={`${recipeTitle} hakkinda istedigini sorabilirsin. Malzemeler, adimlar, pisirme mantigi veya daha saglikli alternatiflerde yardimci olabilirim.`}
+        placeholder="Tarifle ilgili sorunu yaz..."
+        quickPrompts={['Bunu nasil daha saglikli yaparim?', 'Bunun yanina ne iyi gider?']}
         buildMessage={(nextInput) =>
           params.recipeId
-            ? `Recipe id: ${params.recipeId}. Recipe title: ${recipeTitle}. The user is asking about this recipe.\nQuestion: ${nextInput}`
+            ? `Tarif id: ${params.recipeId}. Tarif basligi: ${recipeTitle}. Kullanici bu tarif hakkinda soru soruyor.\nSoru: ${nextInput}`
             : nextInput
         }
       />

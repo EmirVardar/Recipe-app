@@ -36,6 +36,9 @@ public class Recipe {
     @Column(nullable = false, length = 255)
     private String title;
 
+    @Column(name = "title_tr", length = 255)
+    private String titleTr;
+
     @Column(length = 500)
     private String image;
 

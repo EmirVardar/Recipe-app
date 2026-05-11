@@ -3,20 +3,20 @@ import { Stack } from 'expo-router';
 import { AssistantChatPanel } from '@/components/assistant-chat-panel';
 
 const QUICK_PROMPTS = [
-  'Suggest a breakfast that matches my goal',
-  'Suggest a snack that respects my allergies',
+  'Hedefime uygun bir kahvalti oner',
+  'Alerjilerime uygun bir ara ogun oner',
 ];
 
 export default function AssistantLabScreen() {
   return (
     <>
-      <Stack.Screen options={{ title: 'AI Test Center', headerShown: true }} />
+      <Stack.Screen options={{ title: 'AI Test Merkezi', headerShown: true }} />
       <AssistantChatPanel
-        eyebrow="Profile Assistant"
-        title="AI Test Center"
-        subtitle="Test the assistant with your saved profile context using either text or voice."
-        welcomeMessage="I can use your goal, activity level, allergies, intolerances, and food preferences to give more personalized nutrition suggestions."
-        placeholder="Ask about your nutrition plan..."
+        eyebrow="Profil Asistani"
+        title="AI Test Merkezi"
+        subtitle="Asistani kayitli profil baglaminla yazi veya ses kullanarak test et."
+        welcomeMessage="Hedefin, aktivite seviyen, alerjilerin, intoleranslarin ve beslenme tercihlerini kullanarak daha kisisel beslenme onerileri sunabilirim."
+        placeholder="Beslenme planinla ilgili sor..."
         quickPrompts={QUICK_PROMPTS}
       />
     </>

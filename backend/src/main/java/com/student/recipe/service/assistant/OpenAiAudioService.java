@@ -32,7 +32,7 @@ public class OpenAiAudioService {
             }
         });
         builder.part("model", "whisper-1");
-        builder.part("language", "en");
+        builder.part("language", "tr");
 
         Map response = webClient.post()
                 .uri("/v1/audio/transcriptions")

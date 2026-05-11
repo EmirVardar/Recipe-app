@@ -13,7 +13,7 @@ export function RecipeAccessBanner({ onOpenProfile }: RecipeAccessBannerProps) {
       </Text>
       {onOpenProfile ? (
         <Pressable style={styles.button} onPress={onOpenProfile}>
-          <Text style={styles.buttonText}>Profile Git</Text>
+          <Text style={styles.buttonText}>Profile git</Text>
         </Pressable>
       ) : null}
     </View>

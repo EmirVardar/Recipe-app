@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.Customizer;
@@ -23,6 +24,8 @@ import com.student.recipe.security.JwtAuthenticationFilter;
 
 @Configuration
 @EnableWebSecurity
+@EnableAsync  // bunu ekle
+
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;

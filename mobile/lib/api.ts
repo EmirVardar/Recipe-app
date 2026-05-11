@@ -150,16 +150,12 @@ export type RecipeDetailResponse = {
 
 export type AssistantChatResponse = {
   answer: string;
-  warnings: string[];
-  suggestions: string[];
 };
 
 export type AssistantVoiceResponse = {
   transcribedText: string;
   answer: string;
   audio: string;
-  warnings: string[];
-  suggestions: string[];
 };
 
 // YENİ

@@ -59,10 +59,8 @@ const RECORDING_OPTIONS = {
   web: undefined,
 } as const;
 
-function buildAssistantText(answer: string, warnings?: string[], suggestions?: string[]) {
-  return [answer, ...(warnings ?? []), ...(suggestions ?? [])]
-    .filter((part) => part && part.trim().length > 0)
-    .join('\n\n');
+function buildAssistantText(answer: string) {
+  return answer?.trim() ?? '';
 }
 
 async function writeAudioResponse(base64Audio: string) {
@@ -150,11 +148,11 @@ export function AssistantChatPanel({
 
     try {
       const response = await chatWithAssistant(accessToken, buildMessage ? buildMessage(rawInput) : rawInput);
-      pushAssistantMessage(buildAssistantText(response.answer, response.warnings, response.suggestions), {
+      pushAssistantMessage(buildAssistantText(response.answer), {
         mode: 'text',
       });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Message could not be sent.');
+      setErrorMessage(error instanceof Error ? error.message : 'Mesaj gonderilemedi.');
     } finally {
       setLoading(false);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
@@ -220,21 +218,21 @@ export function AssistantChatPanel({
         type: 'audio/m4a',
       });
 
-      const assistantText = buildAssistantText(response.answer, response.warnings, response.suggestions);
+      const assistantText = buildAssistantText(response.answer);
 
       setMessages((current) => [
         ...current,
         {
           id: `user-${Date.now()}`,
           role: 'user',
-          text: response.transcribedText || 'Voice message sent',
+          text: response.transcribedText || 'Sesli mesaj gonderildi',
           transcript: response.transcribedText,
           mode: 'voice',
         },
         {
           id: `assistant-${Date.now() + 1}`,
           role: 'assistant',
-          text: assistantText || 'I could not produce a clear answer right now.',
+          text: assistantText || 'Su anda net bir yanit uretemedim.',
           mode: 'voice',
         },
       ]);
@@ -275,9 +273,9 @@ export function AssistantChatPanel({
             <Ionicons name="mic" size={18} color="#FFFFFF" />
           </View>
           <View style={styles.voiceInfoTextWrap}>
-            <Text style={styles.voiceInfoTitle}>Voice chat is ready</Text>
+            <Text style={styles.voiceInfoTitle}>Sesli sohbet hazir</Text>
             <Text style={styles.voiceInfoBody}>
-              Hold the mic to record, release to send. The assistant will transcribe your voice and speak the reply back.
+              Kaydetmek icin mikrofona basili tut, gondermek icin birak. Asistan sesini yaziya cevirir ve yaniti sesli olarak oynatir.
             </Text>
           </View>
         </View>
@@ -292,25 +290,25 @@ export function AssistantChatPanel({
               key={message.id}
               style={[styles.messageBubble, message.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
               <Text style={[styles.messageLabel, message.role === 'user' ? styles.userLabel : styles.assistantLabel]}>
-                {message.role === 'user' ? (message.mode === 'voice' ? 'You · Voice' : 'You') : 'AI'}
+                {message.role === 'user' ? (message.mode === 'voice' ? 'Sen · Ses' : 'Sen') : 'Asistan'}
               </Text>
               <Text style={[styles.messageText, message.role === 'user' ? styles.userText : styles.assistantText]}>
                 {message.text}
               </Text>
-              {message.transcript ? <Text style={styles.transcriptText}>Transcript: {message.transcript}</Text> : null}
+              {message.transcript ? <Text style={styles.transcriptText}>Metin: {message.transcript}</Text> : null}
             </View>
           ))}
 
           {loading ? (
             <View style={[styles.messageBubble, styles.assistantBubble, styles.loadingBubble]}>
               <ActivityIndicator size="small" color="#EA580C" />
-              <Text style={styles.assistantText}>{isRecording ? 'Listening...' : 'AI is thinking...'}</Text>
+              <Text style={styles.assistantText}>{isRecording ? 'Dinleniyor...' : 'Asistan dusunuyor...'}</Text>
             </View>
           ) : null}
 
           {errorMessage ? (
             <View style={styles.errorCard}>
-              <Text style={styles.errorTitle}>Message Note</Text>
+              <Text style={styles.errorTitle}>Mesaj Notu</Text>
               <Text style={styles.errorBody}>{errorMessage}</Text>
             </View>
           ) : null}
@@ -356,7 +354,7 @@ export function AssistantChatPanel({
 
         {!recordingSupported ? (
           <View style={styles.footerNote}>
-            <Text style={styles.footerNoteText}>Voice recording currently needs the native `expo-av` module and a mobile build.</Text>
+            <Text style={styles.footerNoteText}>Ses kaydi icin su anda yerel `expo-av` modulu ve mobil build gerekiyor.</Text>
           </View>
         ) : null}
       </KeyboardAvoidingView>

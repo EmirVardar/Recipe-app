@@ -3,6 +3,8 @@ package com.student.recipe.repository;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -22,7 +24,9 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
                     :query is null
                     or :query = ''
                     or lower(r.title) like lower(concat('%', :query, '%'))
+                    or lower(coalesce(r.titleTr, '')) like lower(concat('%', :query, '%'))
                     or lower(i.name) like lower(concat('%', :query, '%'))
+                    or lower(coalesce(i.nameTr, '')) like lower(concat('%', :query, '%'))
                   )
               and (:minCalories is null or rn.calories >= :minCalories)
               and (:maxCalories is null or rn.calories <= :maxCalories)
@@ -66,6 +70,9 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
     );
 
     Optional<Recipe> findBySpoonacularId(Long spoonacularId);
+
+    @Query("select r from Recipe r where r.titleTr is null")
+    Page<Recipe> findAllWithoutTurkishTitle(Pageable pageable);
 
     @Query("select r.id from Recipe r")
     List<Long> findAllIds();

@@ -257,7 +257,7 @@ export default function FridgeTabScreen() {
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Urun ara: egg, tomato, yogurt..."
+            placeholder="Urun ara: yumurta, domates, yogurt..."
             placeholderTextColor="#94A3B8"
             style={styles.searchInput}
           />

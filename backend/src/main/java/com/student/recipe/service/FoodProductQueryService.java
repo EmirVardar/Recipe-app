@@ -40,7 +40,7 @@ public class FoodProductQueryService {
                 SELECT
                     results.id,
                     results.fdc_id,
-                    results.name,
+                    results.display_name,
                     results.default_gram_weight,
                     results.piece_gram_weight,
                     results.calories_per_100g,
@@ -52,56 +52,70 @@ public class FoodProductQueryService {
                         id,
                         fdc_id,
                         name,
+                        name_tr,
+                        COALESCE(name_tr, name) AS display_name,
                         default_gram_weight,
                         piece_gram_weight,
                         calories_per_100g,
                         protein_per_100g,
                         carbs_per_100g,
                         fat_per_100g,
-                        -- 1. Full Text Search Rank (Kelime eşleşme kalitesi)
-                        ts_rank(to_tsvector('english', name), to_tsquery('english', ?)) AS word_rank,
-                        -- 2. Trigram Similarity (Yazım hatası toleransı)
-                        similarity(name, ?) AS sim_score,
-                        -- 3. Temel Gıda Önceliği (Sadece isim olanlar veya haşlanmış/çiğ gibi temel yöntemler)
+                        -- 1. Full Text Search Rank
+                        GREATEST(
+                            ts_rank(to_tsvector('english', name), to_tsquery('english', ?)),
+                            ts_rank(to_tsvector('simple', COALESCE(name_tr, '')), to_tsquery('simple', ?))
+                        ) AS word_rank,
+                        -- 2. Trigram Similarity
+                        GREATEST(
+                            similarity(name, ?),
+                            similarity(COALESCE(name_tr, ''), ?)
+                        ) AS sim_score,
+                        -- 3. Temel Gıda Önceliği
                         CASE 
                             WHEN name NOT LIKE '%,%' THEN 2 
                             WHEN name ILIKE ANY (ARRAY['%boiled%', '%raw%', '%baked%', '%roasted%']) THEN 1
                             ELSE 0 
                         END AS basic_priority,
-                        -- 4. Teknik Terim Cezası (NFS, Salt, Ready-to-heat gibi gürültüleri arkaya itmek için)
+                        -- 4. Teknik Terim Cezası
                         CASE 
                             WHEN name ILIKE '%NFS%' OR name ILIKE '%specified%' OR name ILIKE '%fat added%' THEN -1
                             ELSE 0
                         END AS noise_penalty
                     FROM food_products
                     WHERE 
-                        to_tsvector('english', name) @@ to_tsquery('english', ?) -- Kelime bazlı arama
-                        OR name % ? -- Benzerlik bazlı arama (Yazım hatası için)
+                        to_tsvector('english', name) @@ to_tsquery('english', ?)
+                        OR to_tsvector('simple', COALESCE(name_tr, '')) @@ to_tsquery('simple', ?)
+                        OR name % ?
+                        OR COALESCE(name_tr, '') % ?
                 ) results
                 ORDER BY 
-                    -- 1. KESİN ÖNCELİK: Tam eşleşme, sonra "Egg, ..." formatı, sonra diğer başlangıçlar
+                    -- 1. Turkce tam eslesmeyi one al
                     (CASE 
+                        WHEN results.name_tr ILIKE ? THEN 1
+                        WHEN results.name_tr ILIKE (? || '%') THEN 2
                         WHEN results.name ILIKE ? THEN 1
-                        WHEN results.name ILIKE (? || ',%') THEN 2
-                        WHEN results.name ILIKE (? || '%') THEN 3
-                        ELSE 4
+                        WHEN results.name ILIKE (? || ',%') THEN 3
+                        WHEN results.name ILIKE (? || '%') THEN 4
+                        ELSE 5
                     END) ASC,
-
-                    -- 2. Diğer akıllı skorlar
                     (results.word_rank * 2 + results.sim_score + results.basic_priority + results.noise_penalty) DESC,
-
-                    -- 3. Kısa isim daha sade kabul ediliyor
-                    LENGTH(results.name) ASC
+                    LENGTH(results.display_name) ASC
                 LIMIT ?
                 """,
                 foodProductRowMapper(),
-                tsQuery,           // ts_rank için
-                normalizedQuery,   // similarity için
-                tsQuery,           // WHERE @@ için
-                normalizedQuery,   // WHERE % için
-                normalizedQuery,   // exact match ORDER BY için
-                normalizedQuery,   // comma-prefix ORDER BY için
-                normalizedQuery,   // prefix ORDER BY için
+                tsQuery,
+                tsQuery,
+                normalizedQuery,
+                normalizedQuery,
+                tsQuery,
+                tsQuery,
+                normalizedQuery,
+                normalizedQuery,
+                normalizedQuery,
+                normalizedQuery,
+                normalizedQuery,
+                normalizedQuery,
+                normalizedQuery,
                 safeLimit
         );
     }
@@ -127,7 +141,7 @@ public class FoodProductQueryService {
         return new FoodProductSearchItemDto(
                 resultSet.getLong("id"),
                 resultSet.getLong("fdc_id"),
-                resultSet.getString("name"),
+                resultSet.getString("display_name"),
                 getNullableDouble(resultSet, "default_gram_weight"),
                 getNullableDouble(resultSet, "piece_gram_weight"),
                 getNullableDouble(resultSet, "calories_per_100g"),

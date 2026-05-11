@@ -29,23 +29,23 @@ function formatValue(value: number | null | undefined, suffix = '') {
 function formatCategoryLabel(category: string | null | undefined) {
   switch (category) {
     case 'breakfast':
-      return 'Breakfast';
+      return 'Kahvalti';
     case 'lunch':
-      return 'Lunch';
+      return 'Ogle Yemegi';
     case 'dinner':
-      return 'Dinner';
+      return 'Aksam Yemegi';
     case 'dessert':
-      return 'Dessert';
+      return 'Tatli';
     case 'snack':
-      return 'Snack';
+      return 'Atistirmalik';
     case 'drink':
-      return 'Drink';
+      return 'Icecek';
     case 'soup':
-      return 'Soup';
+      return 'Corba';
     case 'salad':
-      return 'Salad';
+      return 'Salata';
     default:
-      return 'Main';
+      return 'Ana Yemek';
   }
 }
 
@@ -102,7 +102,7 @@ export default function SearchTabScreen() {
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Ornek: chicken, pizza, tomato"
+            placeholder="Ornek: tavuk, pizza, domates"
             placeholderTextColor="#9CA3AF"
             style={styles.input}
             returnKeyType="search"
@@ -147,7 +147,7 @@ export default function SearchTabScreen() {
         {!loading && hasSearched && !errorMessage && results.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>Sonuc bulunamadi</Text>
-            <Text style={styles.emptyBody}>Daha genel bir tarif adi ya da ingredient ile tekrar dene.</Text>
+            <Text style={styles.emptyBody}>Daha genel bir tarif adi ya da malzeme ile tekrar dene.</Text>
           </View>
         ) : null}
 

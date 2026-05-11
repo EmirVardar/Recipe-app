@@ -79,7 +79,7 @@ export function RecipeFiltersCard({ value, onChange, onApply, onReset }: RecipeF
           onPress={() => onChange({ ...value, shortTime: !value.shortTime })}
         />
         <FilterChip
-          label="Vegetarian"
+          label="Vejetaryen"
           active={value.vegetarian}
           onPress={() => onChange({ ...value, vegetarian: !value.vegetarian })}
         />

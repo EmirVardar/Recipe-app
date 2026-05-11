@@ -37,6 +37,9 @@ public class RecipeTag {
     @Column(nullable = false, length = 255)
     private String tagValue;
 
+    @Column(name = "tag_value_tr", length = 255)
+    private String tagValueTr;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 

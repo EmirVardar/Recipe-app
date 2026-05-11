@@ -176,11 +176,11 @@ public class MealTrackingService {
 
         if (item.getRecipe() != null) {
             sourceId = item.getRecipe().getId();
-            sourceName = item.getRecipe().getTitle();
+            sourceName = resolveRecipeTitle(item.getRecipe());
             sourceType = "RECIPE";
         } else if (item.getFoodProduct() != null) {
             sourceId = item.getFoodProduct().getId();
-            sourceName = item.getFoodProduct().getName();
+            sourceName = resolveFoodName(item.getFoodProduct());
             sourceType = "FOOD";
         } else {
             sourceId = null;
@@ -241,6 +241,20 @@ public class MealTrackingService {
                 .filter(value -> value != null)
                 .mapToDouble(Double::doubleValue)
                 .sum();
+    }
+
+    private String resolveRecipeTitle(Recipe recipe) {
+        if (recipe.getTitleTr() != null && !recipe.getTitleTr().isBlank()) {
+            return recipe.getTitleTr();
+        }
+        return recipe.getTitle();
+    }
+
+    private String resolveFoodName(FoodProduct foodProduct) {
+        if (foodProduct.getNameTr() != null && !foodProduct.getNameTr().isBlank()) {
+            return foodProduct.getNameTr();
+        }
+        return foodProduct.getName();
     }
 
     private int mealOrder(MealType mealType) {

@@ -52,9 +52,7 @@ public class VoiceController {
         return ResponseEntity.ok(Map.of(
                 "transcribedText", userText,
                 "answer", chatResponse.answer(),
-                "audio", base64Audio,
-                "warnings", chatResponse.warnings(),
-                "suggestions", chatResponse.suggestions()
+                "audio", base64Audio
         ));
     }
 }

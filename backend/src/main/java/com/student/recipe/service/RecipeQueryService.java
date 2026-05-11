@@ -67,7 +67,7 @@ public class RecipeQueryService {
                 .stream()
                 .map(recipe -> new RecipeListItemDto(
                         recipe.getId(),
-                        recipe.getTitle(),
+                        resolveRecipeTitle(recipe),
                         recipe.getImage(),
                         resolvePrimaryCategory(recipe),
                         recipe.getServings(),
@@ -84,7 +84,7 @@ public class RecipeQueryService {
                 .stream()
                 .map(recipe -> new RecipeListItemDto(
                         recipe.getId(),
-                        recipe.getTitle(),
+                        resolveRecipeTitle(recipe),
                         recipe.getImage(),
                         resolvePrimaryCategory(recipe),
                         recipe.getServings(),
@@ -103,7 +103,7 @@ public class RecipeQueryService {
         return new RecipeDetailDto(
                 recipe.getId(),
                 recipe.getSpoonacularId(),
-                recipe.getTitle(),
+                resolveRecipeTitle(recipe),
                 recipe.getImage(),
                 resolvePrimaryCategory(recipe),
                 recipe.getSummary(),
@@ -129,11 +129,11 @@ public class RecipeQueryService {
                         .toList(),
                 recipe.getRecipeSteps().stream()
                         .sorted(Comparator.comparing(RecipeStep::getStepNumber))
-                        .map(step -> new RecipeStepDto(step.getStepNumber(), step.getInstruction()))
+                        .map(step -> new RecipeStepDto(step.getStepNumber(), resolveStepInstruction(step)))
                         .toList(),
                 recipe.getRecipeTags().stream()
                         .sorted(Comparator.comparing(RecipeTag::getTagType).thenComparing(RecipeTag::getTagValue))
-                        .map(tag -> new RecipeTagDto(tag.getTagType(), tag.getTagValue()))
+                        .map(tag -> new RecipeTagDto(tag.getTagType(), resolveTagValue(tag)))
                         .toList()
         );
     }
@@ -142,7 +142,7 @@ public class RecipeQueryService {
         return new RecipeIngredientDto(
                 recipeIngredient.getIngredient().getId(),
                 recipeIngredient.getIngredient().getSpoonacularId(),
-                recipeIngredient.getIngredient().getName(),
+                resolveIngredientName(recipeIngredient),
                 recipeIngredient.getIngredient().getOriginalName(),
                 recipeIngredient.getIngredient().getImage(),
                 recipeIngredient.getAmount(),
@@ -209,5 +209,34 @@ public class RecipeQueryService {
 
     private boolean containsCategory(List<String> dishTypes, String expected) {
         return dishTypes.stream().anyMatch(value -> value != null && value.equalsIgnoreCase(expected));
+    }
+
+    private String resolveRecipeTitle(Recipe recipe) {
+        if (recipe.getTitleTr() != null && !recipe.getTitleTr().isBlank()) {
+            return recipe.getTitleTr();
+        }
+        return recipe.getTitle();
+    }
+
+    private String resolveStepInstruction(RecipeStep step) {
+        if (step.getInstructionTr() != null && !step.getInstructionTr().isBlank()) {
+            return step.getInstructionTr();
+        }
+        return step.getInstruction();
+    }
+
+    private String resolveTagValue(RecipeTag tag) {
+        if (tag.getTagValueTr() != null && !tag.getTagValueTr().isBlank()) {
+            return tag.getTagValueTr();
+        }
+        return tag.getTagValue();
+    }
+
+    private String resolveIngredientName(RecipeIngredient recipeIngredient) {
+        if (recipeIngredient.getIngredient().getNameTr() != null
+                && !recipeIngredient.getIngredient().getNameTr().isBlank()) {
+            return recipeIngredient.getIngredient().getNameTr();
+        }
+        return recipeIngredient.getIngredient().getName();
     }
 }

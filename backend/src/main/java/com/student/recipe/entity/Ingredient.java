@@ -31,6 +31,9 @@ public class Ingredient {
     @Column(nullable = false, length = 255)
     private String name;
 
+    @Column(name = "name_tr", length = 255)
+    private String nameTr;
+
     @Column(length = 255)
     private String originalName;
 

@@ -45,7 +45,7 @@ const UNIT_TYPES = [
 
 const SEARCH_TYPES = [
   { key: 'FOOD', label: 'Urun' },
-  { key: 'RECIPE', label: 'Recipe' },
+  { key: 'RECIPE', label: 'Tarif' },
 ] as const;
 
 function formatNumber(value: number | null | undefined, suffix = '') {
@@ -209,7 +209,7 @@ export default function ShoppingListTabScreen() {
       setErrorMessage('');
     } catch (e) {
       console.log(
-        'HealthKit error:',
+        'HealthKit hatasi:',
         e,
         e instanceof Error ? e.message : 'unknown',
         JSON.stringify(e, Object.getOwnPropertyNames(e ?? {}))
@@ -266,7 +266,7 @@ export default function ShoppingListTabScreen() {
           setErrorMessage('');
         })
         .catch((error) => {
-          setErrorMessage(error instanceof Error ? error.message : 'Recipe arama basarisiz oldu.');
+          setErrorMessage(error instanceof Error ? error.message : 'Tarif arama basarisiz oldu.');
         })
         .finally(() => {
           setRecipeSearchLoading(false);
@@ -357,7 +357,7 @@ export default function ShoppingListTabScreen() {
       setRecipeResults([]);
       await loadDashboard();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Recipe ogune eklenemedi.');
+      setErrorMessage(error instanceof Error ? error.message : 'Tarif ogune eklenemedi.');
     } finally {
       setSubmittingItemId(null);
     }
@@ -380,7 +380,7 @@ export default function ShoppingListTabScreen() {
     try {
       if (item.sourceType === 'RECIPE') {
         if (item.sourceId == null) {
-          throw new Error('Recipe bilgisi eksik.');
+          throw new Error('Tarif bilgisi eksik.');
         }
 
         await updateRecipeMealItem(accessToken, item.id, {
@@ -432,7 +432,7 @@ export default function ShoppingListTabScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadDashboard(true)} />}>
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>ReciPulse Health</Text>
+          <Text style={styles.eyebrow}>ReciPulse Saglik</Text>
           <Text style={styles.title}>Saglik ve Ogun Takibi</Text>
           <Text style={styles.subtitle}>
             Gunluk ogunlerini urun ve recipe bazli ekle, makrolari otomatik hesapla ve saglik verilerinle ayni ekranda takip et.
@@ -540,7 +540,7 @@ export default function ShoppingListTabScreen() {
                 placeholder={
                   searchType === 'FOOD'
                     ? 'Urun ara: egg, boiled egg, fried potato...'
-                    : 'Recipe ara: pasta, chicken salad, soup...'
+                    : 'Tarif ara: makarna, tavuklu salata, corba...'
                 }
                 placeholderTextColor="#94A3B8"
                 style={styles.searchInput}
@@ -551,7 +551,7 @@ export default function ShoppingListTabScreen() {
               ) : null}
 
               {searchType === 'RECIPE' && recipeSearchLoading ? (
-                <Text style={styles.inlineHint}>Recipe arama suruyor...</Text>
+                <Text style={styles.inlineHint}>Tarif arama suruyor...</Text>
               ) : null}
 
               {searchType === 'FOOD' && foodQuery.trim().length < 2 ? (
@@ -559,7 +559,7 @@ export default function ShoppingListTabScreen() {
               ) : null}
 
               {searchType === 'RECIPE' && recipeQuery.trim().length < 2 ? (
-                <Text style={styles.inlineHint}>Recipe aramak icin en az 2 karakter gir.</Text>
+                <Text style={styles.inlineHint}>Tarif aramak icin en az 2 karakter gir.</Text>
               ) : null}
 
               {searchType === 'FOOD' &&

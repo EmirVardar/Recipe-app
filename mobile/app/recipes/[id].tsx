@@ -17,34 +17,26 @@ function formatValue(value: number | null | undefined, suffix = '') {
   return `${rounded}${suffix}`;
 }
 
-function stripHtml(value: string | null | undefined) {
-  if (!value) {
-    return '';
-  }
-
-  return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
 function formatCategoryLabel(category: string | null | undefined) {
   switch (category) {
     case 'breakfast':
-      return 'Breakfast';
+      return 'Kahvalti';
     case 'lunch':
-      return 'Lunch';
+      return 'Ogle Yemegi';
     case 'dinner':
-      return 'Dinner';
+      return 'Aksam Yemegi';
     case 'dessert':
-      return 'Dessert';
+      return 'Tatli';
     case 'snack':
-      return 'Snack';
+      return 'Atistirmalik';
     case 'drink':
-      return 'Drink';
+      return 'Icecek';
     case 'soup':
-      return 'Soup';
+      return 'Corba';
     case 'salad':
-      return 'Salad';
+      return 'Salata';
     default:
-      return 'Main';
+      return 'Ana Yemek';
   }
 }
 
@@ -129,7 +121,6 @@ export default function RecipeDetailScreen() {
                 <Text style={styles.aiButtonText}>AI&apos;a Sor</Text>
               </Pressable>
             </View>
-            <Text style={styles.summary}>{stripHtml(recipe.summary) || 'Bu tarif icin ozet bilgisi bulunmuyor.'}</Text>
 
             <View style={styles.metrics}>
               <View style={styles.metricPill}>
@@ -154,7 +145,7 @@ export default function RecipeDetailScreen() {
               <Text style={styles.sectionTitle}>Icindekiler</Text>
               {recipe.ingredients.map((ingredient, index) => (
                 <Text key={`${recipe.id}-${ingredient.ingredientId}-${index}`} style={styles.sectionItem}>
-                  • {ingredient.originalText || ingredient.name}
+                  • {ingredient.name}
                 </Text>
               ))}
             </View>
@@ -260,11 +251,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '800',
-  },
-  summary: {
-    color: '#4B5563',
-    fontSize: 15,
-    lineHeight: 23,
   },
   metrics: {
     flexDirection: 'row',

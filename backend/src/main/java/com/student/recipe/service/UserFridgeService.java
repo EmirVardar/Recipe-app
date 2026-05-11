@@ -110,7 +110,7 @@ public class UserFridgeService {
         return new FridgeItemResponseDto(
                 item.getId(),
                 foodProduct.getId(),
-                foodProduct.getName(),
+                resolveFoodName(foodProduct),
                 item.getQuantity(),
                 item.getUnitType().name(),
                 item.getGramEquivalent(),
@@ -168,6 +168,13 @@ public class UserFridgeService {
                 .replace('-', '_')
                 .replace(' ', '_')
                 .toUpperCase(Locale.ROOT);
+    }
+
+    private String resolveFoodName(FoodProduct foodProduct) {
+        if (foodProduct.getNameTr() != null && !foodProduct.getNameTr().isBlank()) {
+            return foodProduct.getNameTr();
+        }
+        return foodProduct.getName();
     }
 
     private void validateRequest(FridgeItemCreateRequestDto request) {

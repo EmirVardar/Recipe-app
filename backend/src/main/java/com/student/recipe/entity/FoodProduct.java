@@ -29,6 +29,9 @@ public class FoodProduct {
     @Column(nullable = false, length = 1000)
     private String name;
 
+    @Column(name = "name_tr", length = 1000)
+    private String nameTr;
+
     @Column(name = "default_gram_weight", nullable = false)
     private Double defaultGramWeight;
 

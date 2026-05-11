@@ -37,6 +37,9 @@ public class RecipeStep {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String instruction;
 
+    @Column(name = "instruction_tr", columnDefinition = "TEXT")
+    private String instructionTr;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 

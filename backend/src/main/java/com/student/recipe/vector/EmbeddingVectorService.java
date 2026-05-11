@@ -62,7 +62,7 @@ public class EmbeddingVectorService {
 
     private String buildRecipeDocument(Recipe recipe) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Recipe: ").append(recipe.getTitle()).append("\n");
+        sb.append("Recipe: ").append(resolveRecipeTitle(recipe)).append("\n");
 
         List<String> flags = new ArrayList<>();
         if (Boolean.TRUE.equals(recipe.getVegetarian())) flags.add("vegetarian");
@@ -74,13 +74,13 @@ public class EmbeddingVectorService {
             sb.append("Diet: ").append(String.join(", ", flags)).append("\n");
 
         List<String> tags = recipe.getRecipeTags().stream()
-                .map(RecipeTag::getTagValue)
+                .map(this::resolveTagValue)
                 .toList();
         if (!tags.isEmpty())
             sb.append("Tags: ").append(String.join(", ", tags)).append("\n");
 
         List<String> ingredients = recipe.getRecipeIngredients().stream()
-                .map(ri -> ri.getIngredient().getName())
+                .map(ri -> resolveIngredientName(ri.getIngredient()))
                 .toList();
         if (!ingredients.isEmpty())
             sb.append("Ingredients: ").append(String.join(", ", ingredients)).append("\n");
@@ -102,7 +102,7 @@ public class EmbeddingVectorService {
                 .sorted(Comparator.comparing(RecipeStep::getStepNumber))
                 .limit(3)
                 .forEach(s -> sb.append("Step ").append(s.getStepNumber())
-                        .append(": ").append(s.getInstruction()).append("\n"));
+                        .append(": ").append(resolveStepInstruction(s)).append("\n"));
 
         return sb.toString().trim();
     }
@@ -111,7 +111,7 @@ public class EmbeddingVectorService {
         return Map.of(
                 "kind",             "recipe",
                 "id",               String.valueOf(recipe.getId()),
-                "title",            recipe.getTitle() != null ? recipe.getTitle() : "",
+                "title",            resolveRecipeTitle(recipe),
                 "vegan",            String.valueOf(Boolean.TRUE.equals(recipe.getVegan())),
                 "vegetarian",       String.valueOf(Boolean.TRUE.equals(recipe.getVegetarian())),
                 "gluten_free",      String.valueOf(Boolean.TRUE.equals(recipe.getGlutenFree())),
@@ -126,7 +126,7 @@ public class EmbeddingVectorService {
                 Food: %s
                 Per 100g: %.0f kcal, %.1fg protein, %.1fg carbs, %.1fg fat
                 """,
-                food.getName(),
+                resolveFoodName(food),
                 orZero(food.getCaloriesPer100g()),
                 orZero(food.getProteinPer100g()),
                 orZero(food.getCarbsPer100g()),
@@ -138,7 +138,7 @@ public class EmbeddingVectorService {
         return Map.of(
                 "kind",    "food",
                 "id",      String.valueOf(food.getId()),
-                "name",    food.getName() != null ? food.getName() : "",
+                "name",    resolveFoodName(food),
                 "calories", String.valueOf(orZero(food.getCaloriesPer100g()).intValue()),
                 "protein", String.valueOf(orZero(food.getProteinPer100g()))
         );
@@ -173,5 +173,40 @@ public class EmbeddingVectorService {
 
     private Double orZero(Double v) {
         return v != null ? v : 0.0;
+    }
+
+    private String resolveRecipeTitle(Recipe recipe) {
+        if (recipe.getTitleTr() != null && !recipe.getTitleTr().isBlank()) {
+            return recipe.getTitleTr();
+        }
+        return recipe.getTitle() != null ? recipe.getTitle() : "";
+    }
+
+    private String resolveTagValue(RecipeTag tag) {
+        if (tag.getTagValueTr() != null && !tag.getTagValueTr().isBlank()) {
+            return tag.getTagValueTr();
+        }
+        return tag.getTagValue() != null ? tag.getTagValue() : "";
+    }
+
+    private String resolveIngredientName(com.student.recipe.entity.Ingredient ingredient) {
+        if (ingredient.getNameTr() != null && !ingredient.getNameTr().isBlank()) {
+            return ingredient.getNameTr();
+        }
+        return ingredient.getName() != null ? ingredient.getName() : "";
+    }
+
+    private String resolveStepInstruction(RecipeStep step) {
+        if (step.getInstructionTr() != null && !step.getInstructionTr().isBlank()) {
+            return step.getInstructionTr();
+        }
+        return step.getInstruction() != null ? step.getInstruction() : "";
+    }
+
+    private String resolveFoodName(FoodProduct food) {
+        if (food.getNameTr() != null && !food.getNameTr().isBlank()) {
+            return food.getNameTr();
+        }
+        return food.getName() != null ? food.getName() : "";
     }
 }

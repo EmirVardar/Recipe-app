@@ -505,7 +505,7 @@ export default function ProfileTabScreen() {
 
         <View style={styles.orLineWrap}>
           <View style={styles.orLine} />
-          <Text style={styles.orText}>or</Text>
+          <Text style={styles.orText}>veya</Text>
           <View style={styles.orLine} />
         </View>
 
@@ -701,8 +701,8 @@ export default function ProfileTabScreen() {
               <Pressable style={styles.managementRow} onPress={() => router.push('/assistant-lab')}>
                 <Ionicons name="sparkles-outline" size={24} color="#111827" />
                 <View style={styles.managementTextWrap}>
-                  <Text style={styles.managementTitle}>AI Test Center</Text>
-                  <Text style={styles.managementSubtitle}>See how your profile context shapes AI responses</Text>
+                  <Text style={styles.managementTitle}>AI Test Merkezi</Text>
+                  <Text style={styles.managementSubtitle}>Profil baglaminin AI yanitlarini nasil sekillendirdigini gor</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
               </Pressable>

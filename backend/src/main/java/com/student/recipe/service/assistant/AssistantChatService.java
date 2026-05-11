@@ -2,6 +2,7 @@ package com.student.recipe.service.assistant;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
@@ -30,26 +31,28 @@ public class AssistantChatService {
     private static final String DEFAULT_CONVERSATION_KEY = "default";
 
     private static final String SYSTEM_PROMPT = """
-            You are a personalized nutrition assistant.
-            Respond in English.
+            Sen kişiselleştirilmiş bir beslenme asistanısın.
+            Her zaman Türkçe cevap ver.
             
-            STRICT RULES:
-            - ALWAYS tailor your answer to the user profile provided.
-            - If the user has allergies, NEVER suggest recipes containing those ingredients.
-            - If the user has intolerances, avoid those ingredients.
-            - Always align suggestions with the user's goal and diet type.
-            - Use the CONTEXT section as your primary source. Do not fabricate recipe details.
-            - Do not provide medical diagnoses or medication dosage advice.
-            - If clinically urgent, advise contacting a doctor.
-            - Use conversation history to maintain context across messages.
-            - Use TODAY'S NUTRITION LOG to give personalized daily feedback.
+            KESIN KURALLAR:
+            - Cevabını her zaman verilen kullanıcı profiline göre kişiselleştir.
+            - Kullanıcının alerjileri varsa o içerikleri içeren tarifleri ASLA önerme.
+            - Kullanıcının intoleransları varsa o içeriklerden kaçın.
+            - Önerilerini her zaman kullanıcının hedefi ve beslenme tipine uygun ver.
+            - Birincil kaynak olarak CONTEXT bölümünü kullan. Tarif detayları uydurma.
+            - Tıbbi teşhis veya ilaç doz önerisi verme.
+            - Klinik açıdan acil durum varsa doktora başvurmasını öner.
+            - Mesajlar arası bağlamı korumak için konuşma geçmişini kullan.
+            - Kişiselleştirilmiş günlük geri bildirim için BUGÜNKÜ BESLENME KAYDI bölümünü kullan.
+            - Cevaplari kisa, net ve dogrudan ver.
+            - Kullanici istemedikce uzun aciklama, madde listesi veya gereksiz uyarilar ekleme.
             """;
 
     private static final String INTENT_SYSTEM_PROMPT = """
-            You are an intent detector for a nutrition app.
-            Analyze the user message and return ONLY a JSON object, nothing else.
+            Sen bir beslenme uygulaması için intent tespit edicisin.
+            Kullanıcı mesajını analiz et ve SADECE bir JSON nesnesi döndür, başka hiçbir şey döndürme.
             
-            If the user says they ate/had/consumed something, return:
+            Kullanıcı bir şey yediğini/içtiğini/tükettiğini söylüyorsa şunu döndür:
             {
               "intent": "LOG_MEAL",
               "food_name": "<extracted food name>",
@@ -57,19 +60,19 @@ public class AssistantChatService {
               "servings": 1.0
             }
             
-            If the user asks about their personal nutrition data, daily progress,
-            calories consumed, calories remaining, what they ate today, or how they are doing, return:
+            Kullanıcı kendi beslenme verileri, günlük ilerleme, alınan kalori, kalan kalori,
+            bugün ne yediği veya durumunun nasıl olduğu hakkında soruyorsa şunu döndür:
             {
               "intent": "PERSONAL_QUERY"
             }
 
-            If the user asks what they have in their fridge, what ingredients are left,
-            what they can cook with ingredients at home, or asks for recipe ideas based on fridge items, return:
+            Kullanıcı buzdolabında ne olduğunu, hangi malzemelerin kaldığını,
+            evdeki malzemelerle ne yapabileceğini veya buzdolabına göre tarif fikri istiyorsa şunu döndür:
             {
               "intent": "FRIDGE_QUERY"
             }
 
-            If the user wants to add something to their fridge, return:
+            Kullanıcı buzdolabına bir şey eklemek istiyorsa şunu döndür:
             {
               "intent": "FRIDGE_ADD_ITEM",
               "food_name": "<extracted food name>",
@@ -77,19 +80,19 @@ public class AssistantChatService {
               "unit_type": "<GRAM|PIECE>"
             }
             
-            For everything else (recipe suggestions, food questions, general nutrition advice), return:
+            Diğer her şey için (tarif önerileri, yemek soruları, genel beslenme tavsiyesi) şunu döndür:
             {
               "intent": "OTHER"
             }
             
-            meal_type rules:
-            - morning/breakfast → BREAKFAST
-            - lunch/midday → LUNCH
-            - dinner/evening/night → DINNER
-            - snack/other → SNACK
-            - if not specified → DINNER
+            meal_type kuralları:
+            - sabah/kahvaltı → BREAKFAST
+            - öğle → LUNCH
+            - akşam/gece → DINNER
+            - ara öğün/diğer → SNACK
+            - belirtilmemişse → DINNER
             
-            Return ONLY the JSON, no explanation.
+            SADECE JSON döndür, açıklama yazma.
             """;
 
     private final OpenAiService openAiService;
@@ -136,7 +139,7 @@ public class AssistantChatService {
         }
 
         Long userId = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Kullanici bulunamadi"))
                 .getId();
 
         Conversation conversation = conversationMemoryService.getOrCreate(userId, DEFAULT_CONVERSATION_KEY);
@@ -178,48 +181,42 @@ public class AssistantChatService {
     private AssistantChatResponseDto handlePendingConfirmation(
             String userEmail, String message, Conversation conversation, String historyBlock) {
 
-        String trimmed = message.trim().toLowerCase();
-        boolean confirmed = trimmed.equals("yes") || trimmed.equals("yeah") ||
-                trimmed.equals("yep") || trimmed.equals("ok") ||
-                trimmed.equals("okay") || trimmed.equals("sure") ||
-                trimmed.equals("add it") || trimmed.equals("confirm");
+        String normalized = normalizeConfirmationInput(message);
+        boolean confirmed = normalized.equals("yes") || normalized.equals("yeah") ||
+                normalized.equals("yep") || normalized.equals("ok") ||
+                normalized.equals("okay") || normalized.equals("sure") ||
+                normalized.equals("add it") || normalized.equals("confirm") ||
+                normalized.equals("evet") || normalized.equals("onayla") ||
+                normalized.equals("ekle") || normalized.equals("tamam") ||
+                normalized.startsWith("evet ") || normalized.startsWith("tamam ") ||
+                normalized.startsWith("onayla ") || normalized.startsWith("ekle ");
 
-        boolean rejected = trimmed.equals("no") || trimmed.equals("nope") ||
-                trimmed.equals("cancel") || trimmed.equals("don't") ||
-                trimmed.equals("skip");
+        boolean rejected = normalized.equals("no") || normalized.equals("nope") ||
+                normalized.equals("cancel") || normalized.equals("don't") ||
+                normalized.equals("skip") || normalized.equals("hayir") ||
+                normalized.equals("iptal") || normalized.equals("vazgec") ||
+                normalized.startsWith("hayir ") || normalized.startsWith("iptal ");
 
         if (confirmed) {
             String answer = executePendingAction(userEmail, conversation);
             conversationMemoryService.clearPendingAction(conversation);
             conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
             conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
-            return new AssistantChatResponseDto(
-                    answer,
-                    List.of("This response is for general informational purposes and does not replace medical advice."),
-                    List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian.")
-            );
+            return response(answer);
         }
 
         if (rejected) {
             conversationMemoryService.clearPendingAction(conversation);
-            String answer = "Got it, I won't make that change. Let me know if you need anything else!";
+            String answer = "Tamam, bu islemi yapmayacagim. Baska bir seye ihtiyacin olursa yaz.";
             conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
             conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
-            return new AssistantChatResponseDto(
-                    answer,
-                    List.of("This response is for general informational purposes and does not replace medical advice."),
-                    List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian.")
-            );
+            return response(answer);
         }
 
-        String answer = "I'm waiting for your confirmation. Reply 'yes' to confirm or 'no' to cancel.";
+        String answer = "Onayini bekliyorum. Onaylamak icin 'evet', iptal etmek icin 'hayir' yaz.";
         conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
         conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
-        return new AssistantChatResponseDto(
-                answer,
-                List.of("This response is for general informational purposes and does not replace medical advice."),
-                List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian.")
-        );
+        return response(answer);
     }
 
     private String executePendingAction(String userEmail, Conversation conversation, Map<String, Object> actionData) {
@@ -236,13 +233,13 @@ public class AssistantChatService {
                         foodId, quantity, unitType
                 ));
 
-                return String.format("✓ **%s** has been added to your fridge (%s %s).",
+                return String.format("✓ **%s** buzdolabina eklendi (%s %s).",
                         sourceName,
                         formatCompactNumber(quantity),
-                        "PIECE".equals(unitType) ? "piece" + (quantity == 1 ? "" : "s") : "g");
+                        "PIECE".equals(unitType) ? "adet" : "g");
             }
         } catch (Exception ignored) {
-            return "Sorry, I couldn't complete that fridge action. Please try again.";
+            return "Uzgunum, bu buzdolabi islemini tamamlayamadim. Lutfen tekrar dene.";
         }
 
         return null;
@@ -278,11 +275,11 @@ public class AssistantChatService {
                 ));
             }
 
-            return String.format("✓ **%s** has been added to your %s log (%.0f kcal). Your daily total has been updated!",
+            return String.format("✓ **%s**, %s ogunune eklendi (%.0f kcal). Gunluk toplamlarin guncellendi.",
                     sourceName, mealType.toLowerCase(), calories);
 
         } catch (Exception e) {
-            return "Sorry, I couldn't add that to your log. Please try again.";
+            return "Uzgunum, bunu ogun kaydina ekleyemedim. Lutfen tekrar dene.";
         }
     }
 
@@ -329,14 +326,12 @@ public class AssistantChatService {
                             conversation, "LOG_MEAL", objectMapper.writeValueAsString(actionData));
 
                     String answer = String.format(
-                            "I found **%s** (approximately %.0f kcal for %.1f serving). Should I add it to your %s log? Reply 'yes' to confirm or 'no' to cancel.",
+                            "**%s** bulundu (%.1f porsiyon icin yaklasik %.0f kcal). Bunu %s ogunune ekleyeyim mi? Onaylamak icin 'evet', iptal etmek icin 'hayir' yaz.",
                             recipeName, calories, servings, mealType.toLowerCase());
 
                     conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
                     conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
-                    return new AssistantChatResponseDto(answer,
-                            List.of("This response is for general informational purposes and does not replace medical advice."),
-                            List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian."));
+                    return response(answer);
 
                 } else {
                     Long foodId = Long.parseLong(bestMatch.metadata().get("id").toString());
@@ -358,24 +353,20 @@ public class AssistantChatService {
                             conversation, "LOG_MEAL", objectMapper.writeValueAsString(actionData));
 
                     String answer = String.format(
-                            "I found **%s** (%.0f kcal per 100g). Should I add 100g to your %s log? Reply 'yes' to confirm or 'no' to cancel.",
+                            "**%s** bulundu (100 g icin %.0f kcal). Bunu %s ogunune 100 g olarak ekleyeyim mi? Onaylamak icin 'evet', iptal etmek icin 'hayir' yaz.",
                             foundFoodName, calories, mealType.toLowerCase());
 
                     conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
                     conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
-                    return new AssistantChatResponseDto(answer,
-                            List.of("This response is for general informational purposes and does not replace medical advice."),
-                            List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian."));
+                    return response(answer);
                 }
             }
 
             String answer = String.format(
-                    "I couldn't find '%s' in my database. Could you be more specific or try a different name?", foodName);
+                    "'%s' veritabanimda bulunamadi. Daha net bir ad yazabilir veya farkli bir isim deneyebilirsin.", foodName);
             conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
             conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
-            return new AssistantChatResponseDto(answer,
-                    List.of("This response is for general informational purposes and does not replace medical advice."),
-                    List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian."));
+            return response(answer);
 
         } catch (Exception e) {
             return handleNormalChat(userEmail, message, conversation, historyBlock);
@@ -406,13 +397,13 @@ public class AssistantChatService {
                 === USER QUESTION ===
                 %s
                 
-                Answer based on the user's profile and today's nutrition log only.
-                Be specific with numbers. Calculate remaining calories if asked.
+                Sadece kullanicinin profiline ve bugunku beslenme kaydina gore cevap ver.
+                Sayilar konusunda net ol. Kalan kalori sorulursa hesapla.
         """.formatted(
                 profileContext,
                 dailyNutritionContext,
                 dailyHealthContext,
-                historyBlock.isBlank() ? "(No previous conversation)" : historyBlock,
+                historyBlock.isBlank() ? "(Onceki konusma yok)" : historyBlock,
                 message.trim()
         );
 
@@ -421,11 +412,7 @@ public class AssistantChatService {
         conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
         conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
 
-        return new AssistantChatResponseDto(
-                answer,
-                List.of("This response is for general informational purposes and does not replace medical advice."),
-                List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian.")
-        );
+        return response(answer);
     }
 
     // ── NORMAL CHAT (RAG) ───────────────────────────────────────────
@@ -452,18 +439,18 @@ public class AssistantChatService {
                 === CONVERSATION HISTORY ===
                 %s
                 
-                === RELEVANT RECIPES FROM DATABASE ===
+                === VERITABANINDAN ILGILI TARIFLER ===
                 %s
                 
                 === USER QUESTION ===
                 %s
                 
-                Answer based on the context above. Tailor the response to the user profile.
+                Yukaridaki baglama gore cevap ver. Cevabi kullanici profiline gore uyarlat.
         """.formatted(
                 profileContext,
                 dailyNutritionContext,
                 dailyHealthContext,
-                historyBlock.isBlank() ? "(No previous conversation)" : historyBlock,
+                historyBlock.isBlank() ? "(Onceki konusma yok)" : historyBlock,
                 ragContext,
                 message.trim()
         );
@@ -473,11 +460,7 @@ public class AssistantChatService {
         conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
         conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
 
-        return new AssistantChatResponseDto(
-                answer,
-                List.of("This response is for general informational purposes and does not replace medical advice."),
-                List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian.")
-        );
+        return response(answer);
     }
 
     private AssistantChatResponseDto handleFridgeQuery(
@@ -505,17 +488,17 @@ public class AssistantChatService {
                 === USER QUESTION ===
                 %s
 
-                Answer using the fridge items as the primary constraint.
-                If the user asks what they can cook, prioritize ideas that mostly use the listed fridge items.
-                If important ingredients are missing, say so clearly.
-                If the fridge is empty, say that directly and suggest what to buy.
-                Tailor all suggestions to the user's profile and restrictions.
+                Cevap verirken birincil kisit olarak buzdolabindaki urunleri kullan.
+                Kullanici ne yapabilecegini sorarsa, listelenen urunleri agirlikli kullanan fikirleri one al.
+                Onemli malzemeler eksikse bunu acikca belirt.
+                Buzdolabi bossa bunu dogrudan soyle ve ne alinabilecegini oner.
+                Tum onerileri kullanicinin profiline ve kisitlarina gore uyarlat.
         """.formatted(
                 profileContext,
                 dailyNutritionContext,
                 dailyHealthContext,
                 fridgeContext,
-                historyBlock.isBlank() ? "(No previous conversation)" : historyBlock,
+                historyBlock.isBlank() ? "(Onceki konusma yok)" : historyBlock,
                 message.trim()
         );
 
@@ -524,11 +507,7 @@ public class AssistantChatService {
         conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
         conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
 
-        return new AssistantChatResponseDto(
-                answer,
-                List.of("This response is for general informational purposes and does not replace medical advice."),
-                List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian.")
-        );
+        return response(answer);
     }
 
     @SuppressWarnings("unchecked")
@@ -551,14 +530,12 @@ public class AssistantChatService {
 
             if (bestMatch == null) {
                 String answer = String.format(
-                        "I couldn't find '%s' in my food database. Could you try a more specific product name?",
+                        "'%s' yi urun veritabanimda bulamadim. Daha spesifik bir urun adi deneyebilir misin?",
                         foodName
                 );
                 conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
                 conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
-                return new AssistantChatResponseDto(answer,
-                        List.of("This response is for general informational purposes and does not replace medical advice."),
-                        List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian."));
+                return response(answer);
             }
 
             Long foodId = Long.parseLong(bestMatch.metadata().get("id").toString());
@@ -576,19 +553,17 @@ public class AssistantChatService {
                     conversation, "FRIDGE_ADD_ITEM", objectMapper.writeValueAsString(actionData));
 
             String answer = String.format(
-                    "I found **%s**. Should I add %s %s to your fridge? Reply 'yes' to confirm or 'no' to cancel.",
+                    "**%s** bulundu. Buzdolabina %s %s ekleyeyim mi? Onaylamak icin 'evet', iptal etmek icin 'hayir' yaz.",
                     foundFoodName,
                     formatCompactNumber(quantity),
                     "PIECE".equals(normalizeUnitType(unitType))
-                            ? "piece" + (quantity == 1 ? "" : "s")
+                            ? "adet"
                             : "g"
             );
 
             conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
             conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
-            return new AssistantChatResponseDto(answer,
-                    List.of("This response is for general informational purposes and does not replace medical advice."),
-                    List.of("When following these suggestions, prioritize the plan given by your doctor or dietitian."));
+            return response(answer);
         } catch (Exception e) {
             return handleNormalChat(userEmail, message, conversation, historyBlock);
         }
@@ -635,11 +610,11 @@ public class AssistantChatService {
 
             StringBuilder sb = new StringBuilder();
             sb.append(String.format("""
-                    === TODAY'S NUTRITION LOG ===
-                    Total calories consumed: %.0f kcal
-                    Total protein: %.1f g
-                    Total carbs: %.1f g
-                    Total fat: %.1f g
+                    === BUGUNKU BESLENME KAYDI ===
+                    Toplam alinan kalori: %.0f kcal
+                    Toplam protein: %.1f g
+                    Toplam karbonhidrat: %.1f g
+                    Toplam yag: %.1f g
                     """,
                     dailyMeals.totalCalories() != null ? dailyMeals.totalCalories() : 0.0,
                     dailyMeals.totalProtein() != null ? dailyMeals.totalProtein() : 0.0,
@@ -667,14 +642,14 @@ public class AssistantChatService {
 
     private String buildRagContext(List<DocumentMatch> matches) {
         if (matches == null || matches.isEmpty()) {
-            return "(No relevant recipes found in the database.)";
+            return "(Veritabaninda ilgili tarif bulunamadi.)";
         }
 
         StringBuilder sb = new StringBuilder();
         int idx = 1;
         for (DocumentMatch match : matches) {
             if (match.distance() > RELEVANCE_THRESHOLD) continue;
-            sb.append("--- Recipe ").append(idx++).append(" ---\n");
+            sb.append("--- Tarif ").append(idx++).append(" ---\n");
             sb.append(match.text()).append("\n");
 
             Object url = match.metadata().get("source_url");
@@ -685,7 +660,7 @@ public class AssistantChatService {
         }
 
         if (sb.isEmpty()) {
-            return "(No relevant recipes found in the database.)";
+            return "(Veritabaninda ilgili tarif bulunamadi.)";
         }
 
         return sb.toString();
@@ -695,7 +670,7 @@ public class AssistantChatService {
         if (history == null || history.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
         for (ConversationMessage m : history) {
-            String role = m.getRole() == ConversationMessageRole.USER ? "User" : "Assistant";
+            String role = m.getRole() == ConversationMessageRole.USER ? "Kullanici" : "Asistan";
             String content = m.getContent() == null ? "" : m.getContent().trim();
             if (content.length() > 500) content = content.substring(0, 500) + "...";
             sb.append(role).append(": ").append(content).append("\n");
@@ -716,5 +691,21 @@ public class AssistantChatService {
             return String.valueOf((int) value);
         }
         return String.format(java.util.Locale.US, "%.1f", value);
+    }
+
+    private String normalizeConfirmationInput(String message) {
+        if (message == null) {
+            return "";
+        }
+        return message
+                .trim()
+                .toLowerCase(Locale.forLanguageTag("tr"))
+                .replaceAll("[.!?,:;]+", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private AssistantChatResponseDto response(String answer) {
+        return new AssistantChatResponseDto(answer);
     }
 }
