@@ -29,23 +29,23 @@ function formatValue(value: number | null | undefined, suffix = '') {
 function formatCategoryLabel(category: string | null | undefined) {
   switch (category) {
     case 'breakfast':
-      return 'Breakfast';
+      return 'Kahvaltı';
     case 'lunch':
-      return 'Lunch';
+      return 'Öğle Yemeği';
     case 'dinner':
-      return 'Dinner';
+      return 'Akşam Yemeği';
     case 'dessert':
-      return 'Dessert';
+      return 'Tatlı';
     case 'snack':
-      return 'Snack';
+      return 'Atıştırmalık';
     case 'drink':
-      return 'Drink';
+      return 'İçecek';
     case 'soup':
-      return 'Soup';
+      return 'Çorba';
     case 'salad':
-      return 'Salad';
+      return 'Salata';
     default:
-      return 'Main';
+      return 'Ana Yemek';
   }
 }
 
@@ -101,14 +101,14 @@ export default function MyRecipesTabScreen() {
         <View style={styles.header}>
           <Text style={styles.eyebrow}>ReciPulse Tarif Kutusu</Text>
           <Text style={styles.title}>Tariflerim</Text>
-          <Text style={styles.subtitle}>Favoriye ekledigin tarifler burada kisisel listen olarak tutulur.</Text>
+          <Text style={styles.subtitle}>Favoriye eklediğin tarifler burada kişisel listen olarak tutulur.</Text>
         </View>
 
         {!isLoggedIn ? <RecipeAccessBanner onOpenProfile={() => router.push('/(tabs)/profile')} /> : null}
 
         {errorMessage ? (
           <View style={styles.messageCard}>
-            <Text style={styles.messageTitle}>Baglanti Notu</Text>
+            <Text style={styles.messageTitle}>Bağlantı Notu</Text>
             <Text style={styles.messageBody}>{errorMessage}</Text>
           </View>
         ) : null}
@@ -116,7 +116,7 @@ export default function MyRecipesTabScreen() {
         {isLoggedIn && loading ? (
           <View style={styles.loaderWrap}>
             <ActivityIndicator size="large" color="#EA580C" />
-            <Text style={styles.loaderText}>Tarifler yukleniyor...</Text>
+            <Text style={styles.loaderText}>Tarifler yükleniyor...</Text>
           </View>
         ) : isLoggedIn ? (
           recipes.length > 0 ? (
@@ -156,8 +156,8 @@ export default function MyRecipesTabScreen() {
             </View>
           ) : (
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>Henuz favori yok</Text>
-              <Text style={styles.emptyBody}>Ana sayfada kalp butonuyla begendigin tarifleri buraya ekleyebilirsin.</Text>
+              <Text style={styles.emptyTitle}>Henüz favori yok</Text>
+              <Text style={styles.emptyBody}>Ana sayfada kalp butonuyla beğendiğin tarifleri buraya ekleyebilirsin.</Text>
             </View>
           )
         ) : null}
@@ -169,49 +169,55 @@ export default function MyRecipesTabScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F5F5F7',
   },
   content: {
-    paddingHorizontal: 18,
-    paddingBottom: 28,
-    gap: 18,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+    gap: 16,
   },
   header: {
-    paddingTop: 8,
-    gap: 6,
+    paddingTop: 14,
+    paddingBottom: 4,
+    gap: 8,
+    alignItems: 'center',
   },
   eyebrow: {
-    color: '#C2410C',
-    fontSize: 12,
+    color: '#8E8E93',
+    fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 1.2,
+    letterSpacing: 1.8,
     textTransform: 'uppercase',
   },
   title: {
-    color: '#111827',
+    color: '#111111',
     fontSize: 34,
-    fontWeight: '800',
+    fontWeight: '700',
+    textAlign: 'center',
+    letterSpacing: -0.8,
   },
   subtitle: {
-    color: '#6B7280',
+    color: '#6E6E73',
     fontSize: 15,
     lineHeight: 22,
+    textAlign: 'center',
+    maxWidth: 320,
   },
   messageCard: {
-    backgroundColor: '#FFF7ED',
-    borderColor: '#FDBA74',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E8E8ED',
     borderWidth: 1,
     borderRadius: 20,
-    padding: 18,
+    padding: 16,
     gap: 6,
   },
   messageTitle: {
-    color: '#9A3412',
-    fontSize: 16,
+    color: '#111111',
+    fontSize: 15,
     fontWeight: '700',
   },
   messageBody: {
-    color: '#7C2D12',
+    color: '#6E6E73',
     fontSize: 14,
     lineHeight: 20,
   },
@@ -222,7 +228,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loaderText: {
-    color: '#6B7280',
+    color: '#6E6E73',
     fontSize: 15,
   },
   list: {
@@ -233,68 +239,69 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E8E8ED',
     gap: 6,
   },
   emptyTitle: {
-    color: '#111827',
+    color: '#111111',
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   emptyBody: {
-    color: '#6B7280',
+    color: '#6E6E73',
     fontSize: 14,
     lineHeight: 20,
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 26,
+    borderRadius: 28,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E8E8ED',
   },
   cardImage: {
     width: '100%',
-    height: 190,
+    height: 212,
     backgroundColor: '#E5E7EB',
   },
   cardBody: {
     padding: 18,
-    gap: 12,
+    gap: 10,
   },
   categoryBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#F5F5F7',
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
   },
   categoryBadgeText: {
-    color: '#92400E',
-    fontSize: 11,
-    fontWeight: '800',
+    color: '#6E6E73',
+    fontSize: 10,
+    fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   cardTopRow: {
-    gap: 12,
+    gap: 10,
   },
   cardTitle: {
-    color: '#111827',
-    fontSize: 22,
-    lineHeight: 29,
-    fontWeight: '800',
+    color: '#111111',
+    fontSize: 23,
+    lineHeight: 30,
+    fontWeight: '700',
+    letterSpacing: -0.5,
   },
   calorieBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#FFF1E6',
+    backgroundColor: '#F5F5F7',
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
   },
   calorieBadgeText: {
-    color: '#9A3412',
-    fontSize: 12,
+    color: '#6E6E73',
+    fontSize: 11,
     fontWeight: '700',
   },
   metaRow: {
@@ -303,12 +310,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   metaText: {
-    color: '#6B7280',
-    fontSize: 14,
+    color: '#6E6E73',
+    fontSize: 13,
     fontWeight: '600',
   },
   metaDot: {
-    color: '#D1D5DB',
+    color: '#C7C7CC',
     fontSize: 14,
   },
 });

@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -26,6 +28,9 @@ type ChatMessage = {
   mode?: 'text' | 'voice';
 };
 
+type AssistantMode = 'chat' | 'voice';
+type VoicePhase = 'idle' | 'listening' | 'thinking' | 'speaking';
+
 type AssistantChatPanelProps = {
   eyebrow: string;
   title: string;
@@ -34,9 +39,15 @@ type AssistantChatPanelProps = {
   placeholder: string;
   quickPrompts: string[];
   buildMessage?: (input: string) => string;
+  enableModeTabs?: boolean;
+  defaultMode?: AssistantMode;
 };
 
-const RECORDING_OPTIONS = {
+const BARS = 34;
+const MIN_SCALE = 0.12;
+const MAX_GAIN = 2.05;
+
+const RECORDING_OPTIONS: Parameters<Audio.Recording['prepareToRecordAsync']>[0] = {
   android: {
     extension: '.m4a',
     outputFormat: Audio.AndroidOutputFormat.MPEG_4,
@@ -56,8 +67,66 @@ const RECORDING_OPTIONS = {
     linearPCMIsBigEndian: false,
     linearPCMIsFloat: false,
   },
-  web: undefined,
-} as const;
+  web: {
+    mimeType: 'audio/webm',
+    bitsPerSecond: 128000,
+  },
+};
+
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function easeLevel(value: number) {
+  return Math.pow(clamp01(value), 0.52);
+}
+
+function makeGains(count: number) {
+  const mid = (count - 1) / 2;
+  const centerBias = 0.8;
+  const edgeFloor = 0.18;
+
+  return Array.from({ length: count }, (_, index) => {
+    const dist = Math.abs(index - mid) / mid;
+    const gaussian = Math.exp(-Math.pow(dist / 0.52, 2));
+    const shaped = edgeFloor + (1 - edgeFloor) * gaussian;
+    const randomScale = 0.96 + Math.random() * 0.08;
+    const gain = (1 - centerBias) * 1 + centerBias * shaped;
+
+    return clamp01(gain * randomScale);
+  });
+}
+
+function buildTravelKeyframes(
+  bars: number,
+  samples: number,
+  options: { sigma?: number; freq?: number; floor?: number }
+) {
+  const sigma = options.sigma ?? 0.28;
+  const freq = options.freq ?? 0.85;
+  const floor = options.floor ?? 0.04;
+  const inputRange = Array.from({ length: samples }, (_, index) => index / (samples - 1));
+  const perBarOutputs = Array.from({ length: bars }, () => [] as number[]);
+
+  for (let barIndex = 0; barIndex < bars; barIndex += 1) {
+    const position = bars === 1 ? 0 : barIndex / (bars - 1);
+
+    for (let sampleIndex = 0; sampleIndex < samples; sampleIndex += 1) {
+      const t = inputRange[sampleIndex];
+      let distance = position - t;
+      distance = ((distance + 1.5) % 1) - 0.5;
+
+      const envelope = Math.exp(-Math.pow(distance / sigma, 2));
+      const phase = 2 * Math.PI * (freq * (position - t));
+      const carrier = 0.5 + 0.5 * Math.sin(phase);
+      const shape = clamp01(floor + 0.75 * envelope * (0.55 + 0.45 * carrier));
+
+      perBarOutputs[barIndex].push(shape);
+    }
+  }
+
+  return { inputRange, perBarOutputs };
+}
 
 function buildAssistantText(answer: string) {
   return answer?.trim() ?? '';
@@ -66,13 +135,14 @@ function buildAssistantText(answer: string) {
 async function writeAudioResponse(base64Audio: string) {
   const directory = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
   if (!directory) {
-    throw new Error('Ses dosyasi icin uygun bir klasor bulunamadi.');
+    throw new Error('Ses dosyası için uygun bir klasör bulunamadı.');
   }
 
   const fileUri = `${directory}assistant-reply-${Date.now()}.mp3`;
   await FileSystem.writeAsStringAsync(fileUri, base64Audio, {
     encoding: FileSystem.EncodingType.Base64,
   });
+
   return fileUri;
 }
 
@@ -84,8 +154,11 @@ export function AssistantChatPanel({
   placeholder,
   quickPrompts,
   buildMessage,
+  enableModeTabs = false,
+  defaultMode = 'chat',
 }: AssistantChatPanelProps) {
   const { accessToken, isLoggedIn } = useAuth();
+  const [activeMode, setActiveMode] = useState<AssistantMode>(defaultMode);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -93,8 +166,18 @@ export function AssistantChatPanel({
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSupported, setRecordingSupported] = useState(Platform.OS !== 'web');
+  const [voicePhase, setVoicePhase] = useState<VoicePhase>('idle');
   const scrollRef = useRef<ScrollView | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
+  const hasTypedInput = input.trim().length > 0;
+
+  const levelAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  const travelT = useRef(new Animated.Value(0)).current;
+  const mouthAmount = useRef(new Animated.Value(0)).current;
+  const travelLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const gains = useRef(makeGains(BARS)).current;
 
   useEffect(() => {
     setMessages([
@@ -115,6 +198,103 @@ export function AssistantChatPanel({
     };
   }, []);
 
+  useEffect(() => {
+    const usesTravel = voicePhase === 'idle' || voicePhase === 'thinking';
+
+    if (usesTravel) {
+      if (!travelLoopRef.current) {
+        travelLoopRef.current = Animated.loop(
+          Animated.timing(travelT, {
+            toValue: 1,
+            duration: 3400,
+            easing: Easing.linear,
+            useNativeDriver: true,
+          })
+        );
+        travelLoopRef.current.start();
+      }
+    } else {
+      travelLoopRef.current?.stop();
+      travelLoopRef.current = null;
+      travelT.setValue(0);
+    }
+
+    return () => {
+      if (!usesTravel) {
+        return;
+      }
+    };
+  }, [travelT, voicePhase]);
+
+  useEffect(() => {
+    const shouldPulse = voicePhase === 'listening' || voicePhase === 'speaking';
+
+    if (shouldPulse) {
+      if (!pulseLoopRef.current) {
+        pulseLoopRef.current = Animated.loop(
+          Animated.parallel([
+            Animated.sequence([
+              Animated.timing(levelAnim, {
+                toValue: 0.82,
+                duration: 360,
+                easing: Easing.inOut(Easing.quad),
+                useNativeDriver: true,
+              }),
+              Animated.timing(levelAnim, {
+                toValue: 0.28,
+                duration: 420,
+                easing: Easing.inOut(Easing.quad),
+                useNativeDriver: true,
+              }),
+            ]),
+            Animated.sequence([
+              Animated.timing(glowAnim, {
+                toValue: 0.9,
+                duration: 360,
+                easing: Easing.inOut(Easing.quad),
+                useNativeDriver: true,
+              }),
+              Animated.timing(glowAnim, {
+                toValue: 0.25,
+                duration: 420,
+                easing: Easing.inOut(Easing.quad),
+                useNativeDriver: true,
+              }),
+            ]),
+          ])
+        );
+        pulseLoopRef.current.start();
+      }
+    } else {
+      pulseLoopRef.current?.stop();
+      pulseLoopRef.current = null;
+
+      Animated.parallel([
+        Animated.timing(levelAnim, {
+          toValue: 0,
+          duration: 180,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(glowAnim, {
+          toValue: 0,
+          duration: 180,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [glowAnim, levelAnim, voicePhase]);
+
+  useEffect(() => {
+    Animated.timing(mouthAmount, {
+      toValue: voicePhase === 'listening' || voicePhase === 'speaking' ? 1 : 0,
+      duration: 220,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [mouthAmount, voicePhase]);
+
   const pushAssistantMessage = (text: string, extra?: Partial<ChatMessage>) => {
     setMessages((current) => [
       ...current,
@@ -125,6 +305,10 @@ export function AssistantChatPanel({
         ...extra,
       },
     ]);
+  };
+
+  const scrollToBottom = () => {
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
   };
 
   const handleSend = async (suggestedMessage?: string) => {
@@ -148,14 +332,12 @@ export function AssistantChatPanel({
 
     try {
       const response = await chatWithAssistant(accessToken, buildMessage ? buildMessage(rawInput) : rawInput);
-      pushAssistantMessage(buildAssistantText(response.answer), {
-        mode: 'text',
-      });
+      pushAssistantMessage(buildAssistantText(response.answer), { mode: 'text' });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Mesaj gonderilemedi.');
+      setErrorMessage(error instanceof Error ? error.message : 'Mesaj gönderilemedi.');
     } finally {
       setLoading(false);
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+      scrollToBottom();
     }
   };
 
@@ -180,23 +362,28 @@ export function AssistantChatPanel({
       const nextRecording = new Audio.Recording();
       await nextRecording.prepareToRecordAsync(RECORDING_OPTIONS);
       await nextRecording.startAsync();
+
       setRecording(nextRecording);
       setIsRecording(true);
+      setVoicePhase('listening');
       setErrorMessage('');
     } catch (error) {
       setRecordingSupported(false);
-      setErrorMessage(error instanceof Error ? error.message : 'Ses kaydi baslatilamadi.');
+      setVoicePhase('idle');
+      setErrorMessage(error instanceof Error ? error.message : 'Ses kaydı başlatılamadı.');
     }
   };
 
   const stopRecording = async () => {
     if (!recording || !accessToken || !isLoggedIn) {
+      setVoicePhase('idle');
       return;
     }
 
     setLoading(true);
     setErrorMessage('');
     setIsRecording(false);
+    setVoicePhase('thinking');
 
     try {
       await recording.stopAndUnloadAsync();
@@ -209,7 +396,7 @@ export function AssistantChatPanel({
       setRecording(null);
 
       if (!uri) {
-        throw new Error('Kaydedilen ses dosyasi bulunamadi.');
+        throw new Error('Kaydedilen ses dosyası bulunamadı.');
       }
 
       const response = await chatWithAssistantVoice(accessToken, {
@@ -225,14 +412,14 @@ export function AssistantChatPanel({
         {
           id: `user-${Date.now()}`,
           role: 'user',
-          text: response.transcribedText || 'Sesli mesaj gonderildi',
+          text: response.transcribedText || 'Sesli mesaj gönderildi',
           transcript: response.transcribedText,
           mode: 'voice',
         },
         {
           id: `assistant-${Date.now() + 1}`,
           role: 'assistant',
-          text: assistantText || 'Su anda net bir yanit uretemedim.',
+          text: assistantText || 'Şu anda net bir yanıt üretemedim.',
           mode: 'voice',
         },
       ]);
@@ -242,19 +429,140 @@ export function AssistantChatPanel({
         if (soundRef.current) {
           await soundRef.current.unloadAsync();
         }
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: audioUri },
-          { shouldPlay: true }
-        );
+
+        const { sound } = await Audio.Sound.createAsync({ uri: audioUri });
         soundRef.current = sound;
+        setVoicePhase('speaking');
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if (!status.isLoaded) {
+            return;
+          }
+
+          if (status.didJustFinish) {
+            void sound.unloadAsync();
+            soundRef.current = null;
+            setVoicePhase('idle');
+          }
+        });
+        await sound.playAsync();
+      } else {
+        setVoicePhase('idle');
       }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Sesli mesaj gonderilemedi.');
+      setVoicePhase('idle');
+      setErrorMessage(error instanceof Error ? error.message : 'Sesli mesaj gönderilemedi.');
     } finally {
       setLoading(false);
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+      scrollToBottom();
     }
   };
+
+  const latestVoiceTranscript = [...messages].reverse().find((message) => message.role === 'user' && message.mode === 'voice');
+  const latestVoiceReply = [...messages].reverse().find((message) => message.role === 'assistant' && message.mode === 'voice');
+
+  const { inputRange, perBarOutputs } = useMemo(() => buildTravelKeyframes(BARS, 25, { sigma: 0.28, freq: 0.85, floor: 0.04 }), []);
+
+  const energyRaw = useMemo(
+    () =>
+      levelAnim.interpolate({
+        inputRange: [0, 0.2, 0.45, 0.75, 1],
+        outputRange: [0, 0.08, 0.42, 0.78, 1],
+        extrapolate: 'clamp',
+      }),
+    [levelAnim]
+  );
+
+  const mouthWeightForIndex = useMemo(() => {
+    const mid = (BARS - 1) / 2;
+    return Array.from({ length: BARS }, (_, index) => {
+      const dist = Math.abs(index - mid) / mid;
+      const weight = Math.exp(-Math.pow(dist / 0.42, 2));
+      return clamp01(0.2 + 0.8 * weight);
+    });
+  }, []);
+
+  const barViews = useMemo(() => {
+    const idleAmp = 0.04;
+    const travelBoost = 0.2;
+    const mouthBase = 0.1;
+    const mouthBoost = 1.5;
+    const oneMinusMouth = Animated.subtract(1, mouthAmount);
+
+    return gains.map((gain, index) => {
+      const travelShape = travelT.interpolate({
+        inputRange,
+        outputRange: perBarOutputs[index],
+        extrapolate: 'clamp',
+      });
+
+      const travelCombined = Animated.multiply(
+        travelShape,
+        Animated.add(idleAmp, Animated.multiply(travelBoost, travelShape))
+      );
+
+      const mouthCombined = Animated.multiply(
+        Animated.add(mouthBase, Animated.multiply(mouthBoost, energyRaw)),
+        mouthWeightForIndex[index]
+      );
+
+      const blended = Animated.add(
+        Animated.multiply(travelCombined, oneMinusMouth),
+        Animated.multiply(mouthCombined, mouthAmount)
+      );
+
+      const scaleY = blended.interpolate({
+        inputRange: [0, 1.15],
+        outputRange: [MIN_SCALE + 0.01, MIN_SCALE + 0.01 + (MAX_GAIN * 1.1) * gain],
+        extrapolate: 'clamp',
+      });
+
+      const scaleX = blended.interpolate({
+        inputRange: [0, 1],
+        outputRange: [1, 1.015],
+        extrapolate: 'clamp',
+      });
+
+      return (
+        <Animated.View
+          key={`bar-${index}`}
+          style={[
+            styles.waveBar,
+            {
+              width: 3 + (gain > 0.88 ? 1 : 0),
+              opacity: 0.66 + 0.34 * gain,
+              transform: [{ scaleY }, { scaleX }],
+            },
+          ]}
+        />
+      );
+    });
+  }, [energyRaw, gains, inputRange, mouthAmount, mouthWeightForIndex, perBarOutputs, travelT]);
+
+  const glowOpacity = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.05, 0.18],
+    extrapolate: 'clamp',
+  });
+
+  const glowScale = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.06],
+    extrapolate: 'clamp',
+  });
+
+  const voicePhaseLabel = useMemo(() => {
+    switch (voicePhase) {
+      case 'listening':
+        return 'Dinliyorum';
+      case 'thinking':
+        return 'Düşünüyorum';
+      case 'speaking':
+        return 'Konuşuyorum';
+      case 'idle':
+      default:
+        return 'Hazır';
+    }
+  }, [voicePhase]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -268,73 +576,150 @@ export function AssistantChatPanel({
           <Text style={styles.subtitle}>{subtitle}</Text>
         </View>
 
-        <View style={styles.voiceInfoCard}>
-          <View style={styles.voiceInfoIconWrap}>
-            <Ionicons name="mic" size={18} color="#FFFFFF" />
-          </View>
-          <View style={styles.voiceInfoTextWrap}>
-            <Text style={styles.voiceInfoTitle}>Sesli sohbet hazir</Text>
-            <Text style={styles.voiceInfoBody}>
-              Kaydetmek icin mikrofona basili tut, gondermek icin birak. Asistan sesini yaziya cevirir ve yaniti sesli olarak oynatir.
-            </Text>
-          </View>
-        </View>
-
-        <ScrollView
-          ref={scrollRef}
-          contentContainerStyle={styles.messages}
-          keyboardShouldPersistTaps="handled"
-          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
-          {messages.map((message) => (
-            <View
-              key={message.id}
-              style={[styles.messageBubble, message.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
-              <Text style={[styles.messageLabel, message.role === 'user' ? styles.userLabel : styles.assistantLabel]}>
-                {message.role === 'user' ? (message.mode === 'voice' ? 'Sen · Ses' : 'Sen') : 'Asistan'}
-              </Text>
-              <Text style={[styles.messageText, message.role === 'user' ? styles.userText : styles.assistantText]}>
-                {message.text}
-              </Text>
-              {message.transcript ? <Text style={styles.transcriptText}>Metin: {message.transcript}</Text> : null}
-            </View>
-          ))}
-
-          {loading ? (
-            <View style={[styles.messageBubble, styles.assistantBubble, styles.loadingBubble]}>
-              <ActivityIndicator size="small" color="#EA580C" />
-              <Text style={styles.assistantText}>{isRecording ? 'Dinleniyor...' : 'Asistan dusunuyor...'}</Text>
-            </View>
-          ) : null}
-
-          {errorMessage ? (
-            <View style={styles.errorCard}>
-              <Text style={styles.errorTitle}>Mesaj Notu</Text>
-              <Text style={styles.errorBody}>{errorMessage}</Text>
-            </View>
-          ) : null}
-        </ScrollView>
-
-        <View style={styles.quickRow}>
-          {quickPrompts.map((prompt) => (
-            <Pressable key={prompt} style={styles.quickChip} onPress={() => void handleSend(prompt)}>
-              <Text style={styles.quickChipText}>{prompt}</Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <View style={styles.inputRow}>
-          <TextInput
-            value={input}
-            onChangeText={setInput}
-            placeholder={placeholder}
-            placeholderTextColor="#9CA3AF"
-            style={styles.input}
-            multiline
-          />
-
-          <View style={styles.actionColumn}>
+        {enableModeTabs ? (
+          <View style={styles.modeTabs}>
             <Pressable
-              style={[styles.micButton, isRecording ? styles.micButtonActive : null, !recordingSupported ? styles.disabledButton : null]}
+              onPress={() => setActiveMode('chat')}
+              style={[styles.modeTab, activeMode === 'chat' ? styles.modeTabActive : null]}>
+              <Text style={[styles.modeTabText, activeMode === 'chat' ? styles.modeTabTextActive : null]}>
+                Sohbet
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setActiveMode('voice')}
+              style={[styles.modeTab, activeMode === 'voice' ? styles.modeTabActive : null]}>
+              <Text style={[styles.modeTabText, activeMode === 'voice' ? styles.modeTabTextActive : null]}>
+                Sesli
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {activeMode === 'chat' ? (
+          <>
+            <ScrollView
+              ref={scrollRef}
+              contentContainerStyle={styles.messages}
+              keyboardShouldPersistTaps="handled"
+              onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
+              {messages.map((message) => (
+                <View
+                  key={message.id}
+                  style={[styles.messageBubble, message.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
+                  <Text style={[styles.messageLabel, message.role === 'user' ? styles.userLabel : styles.assistantLabel]}>
+                    {message.role === 'user' ? (message.mode === 'voice' ? 'Sen · Ses' : 'Sen') : 'Asistan'}
+                  </Text>
+                  <Text style={[styles.messageText, message.role === 'user' ? styles.userText : styles.assistantText]}>
+                    {message.text}
+                  </Text>
+                  {message.transcript ? <Text style={styles.transcriptText}>Metin: {message.transcript}</Text> : null}
+                </View>
+              ))}
+
+              {loading ? (
+                <View style={[styles.messageBubble, styles.assistantBubble, styles.loadingBubble]}>
+                  <ActivityIndicator size="small" color="#111111" />
+                  <Text style={styles.assistantText}>
+                    {isRecording ? 'Dinleniyor...' : voicePhase === 'thinking' ? 'Asistan düşünüyor...' : 'Asistan hazırlanıyor...'}
+                  </Text>
+                </View>
+              ) : null}
+
+              {errorMessage ? (
+                <View style={styles.errorCard}>
+                  <Text style={styles.errorTitle}>Mesaj Notu</Text>
+                  <Text style={styles.errorBody}>{errorMessage}</Text>
+                </View>
+              ) : null}
+            </ScrollView>
+
+            <View style={styles.quickRow}>
+              {quickPrompts.map((prompt) => (
+                <Pressable key={prompt} style={styles.quickChip} onPress={() => void handleSend(prompt)}>
+                  <Text style={styles.quickChipText}>{prompt}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <View style={styles.inputRow}>
+              <TextInput
+                value={input}
+                onChangeText={setInput}
+                placeholder={placeholder}
+                placeholderTextColor="#9CA3AF"
+                style={styles.input}
+                multiline
+              />
+
+              <Pressable
+                style={[
+                  hasTypedInput ? styles.sendButton : styles.micButton,
+                  isRecording ? styles.micButtonActive : null,
+                  (loading || (!hasTypedInput && !recordingSupported)) ? styles.disabledButton : null,
+                ]}
+                onPress={() => {
+                  if (hasTypedInput) {
+                    void handleSend();
+                  }
+                }}
+                onPressIn={() => {
+                  if (!hasTypedInput) {
+                    void startRecording();
+                  }
+                }}
+                onPressOut={() => {
+                  if (!hasTypedInput && isRecording) {
+                    void stopRecording();
+                  }
+                }}>
+                <Ionicons
+                  name={hasTypedInput ? 'send' : isRecording ? 'radio-button-on' : 'mic'}
+                  size={18}
+                  color={hasTypedInput ? '#FFFFFF' : '#111111'}
+                />
+              </Pressable>
+            </View>
+
+            {!recordingSupported ? (
+              <View style={styles.footerNote}>
+                <Text style={styles.footerNoteText}>Ses kaydı için şu anda yerel `expo-av` modülü ve mobil build gerekiyor.</Text>
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <ScrollView contentContainerStyle={styles.voiceScroll} showsVerticalScrollIndicator={false}>
+            <View style={styles.voiceCard}>
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.waveGlow,
+                  {
+                    opacity: glowOpacity,
+                    transform: [{ scale: glowScale }],
+                  },
+                ]}
+              />
+
+              <View style={styles.voiceBadge}>
+                <View style={[styles.voiceDot, voicePhase === 'idle' ? styles.voiceDotIdle : styles.voiceDotActive]} />
+                <Text style={styles.voiceBadgeText}>{voicePhaseLabel}</Text>
+              </View>
+
+              <View style={styles.waveRow}>{barViews}</View>
+
+              <Text style={styles.voiceCaption}>
+                {voicePhase === 'idle'
+                  ? 'Basılı tutarak konuş, bırakınca otomatik gönderilir.'
+                  : voicePhase === 'listening'
+                    ? 'Şu an seni dinliyorum.'
+                    : voicePhase === 'thinking'
+                      ? 'Yanıt hazırlanıyor.'
+                      : 'Yanıt sesli olarak oynatılıyor.'}
+              </Text>
+            </View>
+
+            <Pressable
+              disabled={loading || !recordingSupported}
               onPressIn={() => {
                 void startRecording();
               }}
@@ -342,21 +727,40 @@ export function AssistantChatPanel({
                 if (isRecording) {
                   void stopRecording();
                 }
-              }}>
-              <Ionicons name={isRecording ? 'radio-button-on' : 'mic'} size={20} color="#FFFFFF" />
+              }}
+              style={({ pressed }) => [
+                styles.voiceTrigger,
+                pressed && !loading && recordingSupported ? styles.voiceTriggerPressed : null,
+                loading || !recordingSupported ? styles.disabledButton : null,
+              ]}>
+              <View style={[styles.voiceTriggerInner, isRecording ? styles.voiceTriggerInnerActive : null]}>
+                <Ionicons name={isRecording ? 'radio-button-on' : 'mic'} size={24} color="#FFFFFF" />
+              </View>
+              <Text style={styles.voiceTriggerLabel}>{isRecording ? 'Bırakınca gönderilir' : 'Basılı tut ve konuş'}</Text>
             </Pressable>
 
-            <Pressable style={[styles.sendButton, loading ? styles.disabledButton : null]} onPress={() => void handleSend()}>
-              <Ionicons name="send" size={18} color="#FFFFFF" />
-            </Pressable>
-          </View>
-        </View>
+            {latestVoiceTranscript ? (
+              <View style={styles.voiceResultCard}>
+                <Text style={styles.voiceResultLabel}>Son sesli mesajın</Text>
+                <Text style={styles.voiceResultText}>{latestVoiceTranscript.text}</Text>
+              </View>
+            ) : null}
 
-        {!recordingSupported ? (
-          <View style={styles.footerNote}>
-            <Text style={styles.footerNoteText}>Ses kaydi icin su anda yerel `expo-av` modulu ve mobil build gerekiyor.</Text>
-          </View>
-        ) : null}
+            {latestVoiceReply ? (
+              <View style={styles.voiceResultCard}>
+                <Text style={styles.voiceResultLabel}>Asistan yanıtı</Text>
+                <Text style={styles.voiceResultText}>{latestVoiceReply.text}</Text>
+              </View>
+            ) : null}
+
+            {errorMessage ? (
+              <View style={styles.errorCard}>
+                <Text style={styles.errorTitle}>Sesli Not</Text>
+                <Text style={styles.errorBody}>{errorMessage}</Text>
+              </View>
+            ) : null}
+          </ScrollView>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -368,83 +772,87 @@ const styles = StyleSheet.create({
   },
   screen: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F5F5F7',
   },
   headerCard: {
-    paddingHorizontal: 18,
-    paddingTop: 10,
-    paddingBottom: 14,
-    gap: 6,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 18,
+    gap: 8,
+    alignItems: 'center',
   },
   eyebrow: {
-    color: '#C2410C',
-    fontSize: 12,
+    color: '#6B7280',
+    fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 1,
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
   },
   title: {
-    color: '#111827',
-    fontSize: 28,
-    lineHeight: 34,
+    color: '#111111',
+    fontSize: 31,
+    lineHeight: 36,
     fontWeight: '800',
+    textAlign: 'center',
   },
   subtitle: {
     color: '#6B7280',
     fontSize: 14,
     lineHeight: 20,
+    textAlign: 'center',
+    maxWidth: 320,
   },
-  voiceInfoCard: {
-    marginHorizontal: 18,
-    marginBottom: 14,
-    borderRadius: 24,
-    backgroundColor: '#111827',
-    padding: 16,
+  modeTabs: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+    padding: 4,
+    borderRadius: 16,
+    backgroundColor: '#ECECF0',
     flexDirection: 'row',
-    gap: 12,
-  },
-  voiceInfoIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#EA580C',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  voiceInfoTextWrap: {
-    flex: 1,
     gap: 4,
   },
-  voiceInfoTitle: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '800',
+  modeTab: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
   },
-  voiceInfoBody: {
-    color: '#D1D5DB',
+  modeTabActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+  },
+  modeTabText: {
+    color: '#6B7280',
     fontSize: 13,
-    lineHeight: 19,
+    fontWeight: '600',
+  },
+  modeTabTextActive: {
+    color: '#111111',
   },
   messages: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     paddingBottom: 16,
     gap: 12,
   },
   messageBubble: {
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    paddingVertical: 13,
     gap: 6,
-    maxWidth: '88%',
+    maxWidth: '86%',
   },
   assistantBubble: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E5E5EA',
     alignSelf: 'flex-start',
   },
   userBubble: {
-    backgroundColor: '#EA580C',
+    backgroundColor: '#111111',
     alignSelf: 'flex-end',
   },
   loadingBubble: {
@@ -459,10 +867,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   assistantLabel: {
-    color: '#9A3412',
+    color: '#8E8E93',
   },
   userLabel: {
-    color: '#FFEDD5',
+    color: '#D1D5DB',
   },
   messageText: {
     fontSize: 15,
@@ -475,7 +883,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   transcriptText: {
-    color: '#FDE68A',
+    color: '#E5E7EB',
     fontSize: 12,
     lineHeight: 18,
   },
@@ -500,52 +908,49 @@ const styles = StyleSheet.create({
   quickRow: {
     flexDirection: 'row',
     gap: 10,
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     paddingBottom: 12,
   },
   quickChip: {
     flex: 1,
-    backgroundColor: '#FFF7ED',
+    backgroundColor: '#FFFFFF',
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#FDBA74',
+    borderColor: '#E5E5EA',
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 9,
     alignItems: 'center',
   },
   quickChipText: {
-    color: '#9A3412',
+    color: '#3A3A3C',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
     textAlign: 'center',
   },
   inputRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     gap: 10,
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     paddingBottom: 18,
     paddingTop: 8,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F5F5F7',
   },
   input: {
     flex: 1,
-    minHeight: 54,
+    minHeight: 52,
     maxHeight: 120,
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E5E5EA',
     paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingVertical: 13,
     fontSize: 15,
     color: '#111827',
   },
-  actionColumn: {
-    gap: 10,
-  },
   micButton: {
-    backgroundColor: '#C2410C',
+    backgroundColor: '#E5E7EB',
     borderRadius: 18,
     width: 52,
     height: 52,
@@ -553,10 +958,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   micButtonActive: {
-    backgroundColor: '#991B1B',
+    backgroundColor: '#D1D5DB',
   },
   sendButton: {
-    backgroundColor: '#111827',
+    backgroundColor: '#111111',
     borderRadius: 18,
     width: 52,
     height: 52,
@@ -564,7 +969,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   disabledButton: {
-    opacity: 0.6,
+    opacity: 0.55,
   },
   footerNote: {
     paddingHorizontal: 18,
@@ -574,5 +979,125 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontSize: 12,
     lineHeight: 18,
+  },
+  voiceScroll: {
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+    gap: 16,
+  },
+  voiceCard: {
+    marginTop: 8,
+    paddingVertical: 22,
+    paddingHorizontal: 18,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+    overflow: 'hidden',
+    gap: 16,
+  },
+  voiceBadge: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#F2F2F7',
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+  },
+  voiceDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  voiceDotIdle: {
+    backgroundColor: '#9CA3AF',
+  },
+  voiceDotActive: {
+    backgroundColor: '#111111',
+  },
+  voiceBadgeText: {
+    color: '#4B5563',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  waveGlow: {
+    position: 'absolute',
+    left: -44,
+    right: -44,
+    top: -34,
+    bottom: -34,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15, 23, 42, 0.08)',
+  },
+  waveRow: {
+    height: 92,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  waveBar: {
+    height: 48,
+    borderRadius: 999,
+    backgroundColor: '#111111',
+  },
+  voiceCaption: {
+    textAlign: 'center',
+    color: '#6B7280',
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  voiceTrigger: {
+    alignSelf: 'center',
+    alignItems: 'center',
+    gap: 10,
+  },
+  voiceTriggerPressed: {
+    transform: [{ scale: 0.985 }],
+  },
+  voiceTriggerInner: {
+    width: 74,
+    height: 74,
+    borderRadius: 22,
+    backgroundColor: '#111111',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 6,
+  },
+  voiceTriggerInnerActive: {
+    backgroundColor: '#2F2F31',
+  },
+  voiceTriggerLabel: {
+    color: '#4B5563',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  voiceResultCard: {
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+    gap: 6,
+  },
+  voiceResultLabel: {
+    color: '#8E8E93',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  voiceResultText: {
+    color: '#111827',
+    fontSize: 15,
+    lineHeight: 22,
   },
 });

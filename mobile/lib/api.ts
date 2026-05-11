@@ -297,7 +297,7 @@ export function getApiBaseUrl(): string {
     return 'http://10.0.2.2:8080';
   }
 
-return 'http://172.16.1.42:8080';
+return 'http://172.16.1.93:8080';
 }
 
 export async function register(payload: RegisterRequest): Promise<AuthResponse> {

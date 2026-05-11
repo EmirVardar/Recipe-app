@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,18 +20,10 @@ import {
   addFavoriteRecipe,
   getRecipes,
   removeFavoriteRecipe,
+  searchRecipes,
   type RecipeListItemResponse,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-
-const CATEGORY_CHIPS = [
-  { label: 'Tumu', value: '' },
-  { label: 'Kahvalti', value: 'breakfast' },
-  { label: 'Salata', value: 'salad' },
-  { label: 'Corba', value: 'soup' },
-  { label: 'Tatli', value: 'dessert' },
-  { label: 'Ana Yemek', value: 'main' },
-];
 
 function formatValue(value: number | null | undefined, suffix = '') {
   if (value == null) {
@@ -44,19 +37,19 @@ function formatValue(value: number | null | undefined, suffix = '') {
 function formatCategoryLabel(category: string | null | undefined) {
   switch (category) {
     case 'breakfast':
-      return 'Kahvalti';
+      return 'Kahvaltı';
     case 'lunch':
-      return 'Ogle Yemegi';
+      return 'Öğle Yemeği';
     case 'dinner':
-      return 'Aksam Yemegi';
+      return 'Akşam Yemeği';
     case 'dessert':
-      return 'Tatli';
+      return 'Tatlı';
     case 'snack':
-      return 'Atistirmalik';
+      return 'Atıştırmalık';
     case 'drink':
-      return 'Icecek';
+      return 'İçecek';
     case 'soup':
-      return 'Corba';
+      return 'Çorba';
     case 'salad':
       return 'Salata';
     default:
@@ -67,12 +60,23 @@ function formatCategoryLabel(category: string | null | undefined) {
 export default function HomeTabScreen() {
   const { accessToken, isLoggedIn } = useAuth();
   const [recipes, setRecipes] = useState<RecipeListItemResponse[]>([]);
+  const [query, setQuery] = useState('');
   const [filters, setFilters] = useState<RecipeFilters>(defaultRecipeFilters);
   const [appliedFilters, setAppliedFilters] = useState<RecipeFilters>(defaultRecipeFilters);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [favoriteLoadingId, setFavoriteLoadingId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+
+  const activeFilterCount = [
+    appliedFilters.minCalories.trim().length > 0,
+    appliedFilters.maxCalories.trim().length > 0,
+    appliedFilters.highProtein,
+    appliedFilters.shortTime,
+    appliedFilters.vegetarian,
+    appliedFilters.vegan,
+  ].filter(Boolean).length;
 
   const loadRecipes = useCallback(async (isRefresh = false) => {
     if (!accessToken) {
@@ -90,8 +94,11 @@ export default function HomeTabScreen() {
     }
 
     try {
-      const nextRecipes = await getRecipes(accessToken, appliedFilters);
-      setRecipes(nextRecipes);
+      const normalizedQuery = query.trim();
+      const nextRecipes = normalizedQuery
+        ? await searchRecipes(accessToken, normalizedQuery, appliedFilters)
+        : await getRecipes(accessToken, appliedFilters);
+      setRecipes(normalizedQuery ? nextRecipes.slice(0, 5) : nextRecipes);
       setErrorMessage('');
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Tarifler yuklenemedi.');
@@ -99,7 +106,7 @@ export default function HomeTabScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [accessToken, appliedFilters]);
+  }, [accessToken, appliedFilters, query]);
 
   useEffect(() => {
     void loadRecipes();
@@ -139,53 +146,94 @@ export default function HomeTabScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadRecipes(true)} />}>
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>ReciPulse Kesfet</Text>
-          <Text style={styles.title}>Tum Tarifler</Text>
+          <Text style={styles.eyebrow}>ReciPulse Keşfet</Text>
+          <Text style={styles.title}>Tüm Tarifler</Text>
           <Text style={styles.subtitle}>
-            Begendigin tarifleri kalp ile kaydet. Favoriye eklediklerin direkt Tariflerim sekmesine duser.
+            Beğendiğin tarifleri kalp ile kaydet. Favoriye eklediklerin direkt Tariflerim sekmesine düşer.
           </Text>
         </View>
 
         {!isLoggedIn ? <RecipeAccessBanner onOpenProfile={() => router.push('/(tabs)/profile')} /> : null}
 
         {isLoggedIn ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
-            {CATEGORY_CHIPS.map((chip) => {
-              const active = filters.category === chip.value;
-              return (
-                <Pressable
-                  key={chip.value || 'all'}
-                  style={[styles.categoryChip, active ? styles.categoryChipActive : null]}
-                  onPress={() => {
-                    setFilters((current) => ({ ...current, category: chip.value }));
-                    setAppliedFilters((current) => ({ ...current, category: chip.value }));
-                  }}>
-                  <Text style={[styles.categoryChipText, active ? styles.categoryChipTextActive : null]}>
-                    {chip.label}
-                  </Text>
+          <View style={styles.searchCard}>
+            <View style={styles.searchInputWrap}>
+              <Ionicons name="search-outline" size={18} color="#9CA3AF" />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Tarif ya da malzeme ara"
+                placeholderTextColor="#9CA3AF"
+                style={styles.searchInput}
+                returnKeyType="search"
+                onSubmitEditing={() => {
+                  void loadRecipes();
+                }}
+              />
+              {query.trim().length > 0 ? (
+                <Pressable onPress={() => {
+                  setQuery('');
+                  setErrorMessage('');
+                }}>
+                  <Ionicons name="close-circle" size={18} color="#D1D5DB" />
                 </Pressable>
-              );
-            })}
-          </ScrollView>
+              ) : null}
+            </View>
+
+            <Pressable style={styles.searchButton} onPress={() => void loadRecipes()}>
+              <Text style={styles.searchButtonText}>{query.trim().length > 0 ? 'Ara' : 'Tümünü Göster'}</Text>
+            </Pressable>
+          </View>
         ) : null}
 
         {isLoggedIn ? (
-          <RecipeFiltersCard
-            value={filters}
-            onChange={setFilters}
-            onApply={() => {
-              setAppliedFilters({ ...filters });
-            }}
-            onReset={() => {
-              setFilters(defaultRecipeFilters);
-              setAppliedFilters(defaultRecipeFilters);
-            }}
-          />
+          <View style={styles.filterSection}>
+            <Pressable
+              style={[styles.filterToggleButton, filtersOpen ? styles.filterToggleButtonOpen : null]}
+              onPress={() => setFiltersOpen((current) => !current)}>
+              <View style={styles.filterToggleLeft}>
+                <Ionicons name="options-outline" size={18} color={filtersOpen ? '#FFFFFF' : '#EA580C'} />
+                <Text style={[styles.filterToggleText, filtersOpen ? styles.filterToggleTextOpen : null]}>
+                  Filtrele
+                </Text>
+              </View>
+              <View style={styles.filterToggleRight}>
+                {activeFilterCount > 0 ? (
+                  <View style={[styles.filterCountBadge, filtersOpen ? styles.filterCountBadgeOpen : null]}>
+                    <Text style={[styles.filterCountText, filtersOpen ? styles.filterCountTextOpen : null]}>
+                      {activeFilterCount}
+                    </Text>
+                  </View>
+                ) : null}
+                <Ionicons
+                  name={filtersOpen ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={filtersOpen ? '#FFFFFF' : '#6B7280'}
+                />
+              </View>
+            </Pressable>
+
+            {filtersOpen ? (
+              <RecipeFiltersCard
+                value={filters}
+                onChange={setFilters}
+                onApply={() => {
+                  setAppliedFilters({ ...filters });
+                  setFiltersOpen(false);
+                }}
+                onReset={() => {
+                  setFilters(defaultRecipeFilters);
+                  setAppliedFilters(defaultRecipeFilters);
+                  setFiltersOpen(false);
+                }}
+              />
+            ) : null}
+          </View>
         ) : null}
 
         {errorMessage ? (
           <View style={styles.messageCard}>
-            <Text style={styles.messageTitle}>Baglanti Notu</Text>
+            <Text style={styles.messageTitle}>Bağlantı Notu</Text>
             <Text style={styles.messageBody}>{errorMessage}</Text>
           </View>
         ) : null}
@@ -193,7 +241,18 @@ export default function HomeTabScreen() {
         {isLoggedIn && loading ? (
           <View style={styles.loaderWrap}>
             <ActivityIndicator size="large" color="#EA580C" />
-            <Text style={styles.loaderText}>Tarifler yukleniyor...</Text>
+            <Text style={styles.loaderText}>{query.trim().length > 0 ? 'Tarifler aranıyor...' : 'Tarifler yükleniyor...'}</Text>
+          </View>
+        ) : isLoggedIn && recipes.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>
+              {query.trim().length > 0 ? 'Sonuç bulunamadı' : 'Tarif bulunamadı'}
+            </Text>
+            <Text style={styles.emptyBody}>
+              {query.trim().length > 0
+                ? 'Daha genel bir tarif adı ya da malzeme ile tekrar dene.'
+                : 'Filtreleri temizleyip tekrar deneyebilirsin.'}
+            </Text>
           </View>
         ) : isLoggedIn ? (
           <View style={styles.list}>
@@ -257,49 +316,94 @@ export default function HomeTabScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F5F5F7',
   },
   content: {
-    paddingHorizontal: 18,
-    paddingBottom: 28,
-    gap: 18,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+    gap: 16,
   },
   header: {
-    paddingTop: 8,
-    gap: 6,
+    paddingTop: 14,
+    paddingBottom: 4,
+    gap: 8,
+    alignItems: 'center',
   },
   eyebrow: {
-    color: '#C2410C',
-    fontSize: 12,
+    color: '#8E8E93',
+    fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 1.2,
+    letterSpacing: 1.8,
     textTransform: 'uppercase',
   },
   title: {
-    color: '#111827',
-    fontSize: 34,
-    fontWeight: '800',
+    color: '#111111',
+    fontSize: 36,
+    fontWeight: '700',
+    textAlign: 'center',
+    letterSpacing: -0.9,
   },
   subtitle: {
-    color: '#6B7280',
+    color: '#6E6E73',
     fontSize: 15,
     lineHeight: 22,
+    textAlign: 'center',
+    maxWidth: 320,
+  },
+  searchCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#E8E8ED',
+    padding: 10,
+    gap: 10,
+    shadowColor: '#000000',
+    shadowOpacity: 0.04,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 2,
+  },
+  searchInputWrap: {
+    minHeight: 48,
+    borderRadius: 18,
+    backgroundColor: '#F5F5F7',
+    paddingHorizontal: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#111111',
+  },
+  searchButton: {
+    minHeight: 42,
+    borderRadius: 14,
+    backgroundColor: '#1C1C1E',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
   messageCard: {
-    backgroundColor: '#FFF7ED',
-    borderColor: '#FDBA74',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#F0D5C7',
     borderWidth: 1,
     borderRadius: 20,
-    padding: 18,
+    padding: 16,
     gap: 6,
   },
   messageTitle: {
-    color: '#9A3412',
-    fontSize: 16,
+    color: '#A14A22',
+    fontSize: 15,
     fontWeight: '700',
   },
   messageBody: {
-    color: '#7C2D12',
+    color: '#6E6E73',
     fontSize: 14,
     lineHeight: 20,
   },
@@ -313,43 +417,93 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontSize: 15,
   },
+  emptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    gap: 6,
+  },
+  emptyTitle: {
+    color: '#111827',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  emptyBody: {
+    color: '#6B7280',
+    fontSize: 14,
+    lineHeight: 20,
+  },
   list: {
     gap: 14,
   },
-  categoryRow: {
+  filterSection: {
     gap: 10,
-    paddingRight: 18,
   },
-  categoryChip: {
+  filterToggleButton: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 999,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E8E8ED',
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  categoryChipActive: {
-    backgroundColor: '#111827',
-    borderColor: '#111827',
+  filterToggleButtonOpen: {
+    backgroundColor: '#F0EEEA',
+    borderColor: '#E3DED8',
   },
-  categoryChipText: {
-    color: '#374151',
-    fontSize: 13,
+  filterToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  filterToggleRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  filterToggleText: {
+    color: '#1C1C1E',
+    fontSize: 14,
     fontWeight: '700',
   },
-  categoryChipTextActive: {
-    color: '#FFFFFF',
+  filterToggleTextOpen: {
+    color: '#1C1C1E',
+  },
+  filterCountBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#F5F5F7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  filterCountBadgeOpen: {
+    backgroundColor: '#FFFFFF',
+  },
+  filterCountText: {
+    color: '#6E6E73',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  filterCountTextOpen: {
+    color: '#3A3A3C',
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 26,
+    borderRadius: 28,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E8E8ED',
   },
   cardImage: {
     width: '100%',
-    height: 220,
+    height: 224,
     backgroundColor: '#E5E7EB',
   },
   favoriteButton: {
@@ -359,63 +513,61 @@ const styles = StyleSheet.create({
     zIndex: 2,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#FFF7ED',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.92)',
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderWidth: 1,
-    borderColor: '#FDBA74',
+    paddingHorizontal: 11,
+    paddingVertical: 7,
   },
   favoriteButtonActive: {
-    backgroundColor: '#EA580C',
-    borderColor: '#EA580C',
+    backgroundColor: '#1C1C1E',
   },
   favoriteButtonText: {
-    color: '#9A3412',
-    fontSize: 12,
-    fontWeight: '800',
+    color: '#1C1C1E',
+    fontSize: 11,
+    fontWeight: '700',
   },
   favoriteButtonTextActive: {
     color: '#FFFFFF',
   },
   cardBody: {
     padding: 18,
-    gap: 12,
+    gap: 10,
   },
   categoryBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#F5F5F7',
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
   },
   categoryBadgeText: {
-    color: '#92400E',
-    fontSize: 11,
-    fontWeight: '800',
+    color: '#6E6E73',
+    fontSize: 10,
+    fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   cardTopRow: {
-    gap: 12,
+    gap: 10,
   },
   cardTitle: {
-    color: '#111827',
-    fontSize: 22,
-    lineHeight: 29,
-    fontWeight: '800',
+    color: '#111111',
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '700',
+    letterSpacing: -0.5,
   },
   calorieBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#FFF1E6',
+    backgroundColor: '#F5F5F7',
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
   },
   calorieBadgeText: {
-    color: '#9A3412',
-    fontSize: 12,
+    color: '#6E6E73',
+    fontSize: 11,
     fontWeight: '700',
   },
   metaRow: {
@@ -424,12 +576,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   metaText: {
-    color: '#6B7280',
-    fontSize: 14,
+    color: '#6E6E73',
+    fontSize: 13,
     fontWeight: '600',
   },
   metaDot: {
-    color: '#D1D5DB',
+    color: '#C7C7CC',
     fontSize: 14,
   },
 });

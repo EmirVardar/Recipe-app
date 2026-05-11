@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 import {
   addFridgeItem,
@@ -96,7 +97,7 @@ export default function FridgeTabScreen() {
 
     setSearchLoading(true);
     const timeoutId = setTimeout(() => {
-      void searchFoodProducts(normalizedQuery, 10)
+      void searchFoodProducts(normalizedQuery, 5)
         .then((results) => {
           setSearchResults(results);
           setErrorMessage('');
@@ -188,9 +189,9 @@ export default function FridgeTabScreen() {
     return (
       <SafeAreaView style={styles.screen}>
         <View style={styles.loggedOutState}>
-          <Text style={styles.loggedOutTitle}>Buzdolabini kullanmak icin giris yap</Text>
+          <Text style={styles.loggedOutTitle}>Buzdolabını kullanmak için giriş yap</Text>
           <Text style={styles.loggedOutBody}>
-            Urunlerini saklayip hangi malzemelerin sende oldugunu tek ekranda takip edebilirsin.
+            Ürünlerini saklayıp hangi malzemelerin sende olduğunu tek ekranda takip edebilirsin.
           </Text>
         </View>
       </SafeAreaView>
@@ -202,18 +203,18 @@ export default function FridgeTabScreen() {
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void loadItems(true)} />}>
-        <View style={styles.heroCard}>
-          <Text style={styles.heroEyebrow}>Mutfak Stogu</Text>
-          <Text style={styles.heroTitle}>Buzdolabindaki urunleri hizlica yonet</Text>
+        <View style={styles.header}>
+          <Text style={styles.heroEyebrow}>Mutfak Stoğu</Text>
+          <Text style={styles.heroTitle}>Buzdolabım</Text>
           <Text style={styles.heroBody}>
-            Veritabanindaki urunleri arayip sana ait buzdolabina ekleyebilirsin. Miktarlari sonradan artirip
-            azaltmak da mumkun.
+            Veritabanındaki ürünleri arayıp sana ait buzdolabına ekleyebilirsin. Miktarları sonradan artırıp
+            azaltmak da mümkün.
           </Text>
         </View>
 
         <View style={styles.metricsGrid}>
           <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>Toplam Urun</Text>
+            <Text style={styles.metricLabel}>Toplam Ürün</Text>
             <Text style={styles.metricValue}>{formatNumber(totalItems)}</Text>
           </View>
 
@@ -224,7 +225,7 @@ export default function FridgeTabScreen() {
         </View>
 
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Urun Ara ve Ekle</Text>
+          <Text style={styles.sectionTitle}>Ürün Ara ve Ekle</Text>
 
           <View style={styles.controlsRow}>
             <TextInput
@@ -254,17 +255,20 @@ export default function FridgeTabScreen() {
             </View>
           </View>
 
-          <TextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Urun ara: yumurta, domates, yogurt..."
-            placeholderTextColor="#94A3B8"
-            style={styles.searchInput}
-          />
+          <View style={styles.searchInputWrap}>
+            <Ionicons name="search-outline" size={18} color="#9CA3AF" />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Ürün ara: yumurta, domates, yoğurt..."
+              placeholderTextColor="#94A3B8"
+              style={styles.searchInput}
+            />
+          </View>
 
-          {searchLoading ? <Text style={styles.inlineHint}>Urunler aranıyor...</Text> : null}
+          {searchLoading ? <Text style={styles.inlineHint}>Ürünler aranıyor...</Text> : null}
           {!searchLoading && searchQuery.trim().length > 0 && searchQuery.trim().length < 2 ? (
-            <Text style={styles.inlineHint}>Arama icin en az 2 karakter gir.</Text>
+            <Text style={styles.inlineHint}>Arama için en az 2 karakter gir.</Text>
           ) : null}
           {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
@@ -292,7 +296,7 @@ export default function FridgeTabScreen() {
         </View>
 
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Buzdolabim</Text>
+          <Text style={styles.sectionTitle}>Buzdolabım</Text>
 
           {loading ? (
             <View style={styles.loadingState}>
@@ -302,8 +306,8 @@ export default function FridgeTabScreen() {
 
           {!loading && items.length === 0 ? (
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>Henuz urun eklenmedi</Text>
-              <Text style={styles.emptyBody}>Yukardan arama yapip ilk malzemeni buzdolabina ekleyebilirsin.</Text>
+              <Text style={styles.emptyTitle}>Henüz ürün eklenmedi</Text>
+              <Text style={styles.emptyBody}>Yukarıdan arama yapıp ilk malzemeni buzdolabına ekleyebilirsin.</Text>
             </View>
           ) : null}
 
@@ -340,7 +344,7 @@ export default function FridgeTabScreen() {
                   </Pressable>
 
                   <Text style={styles.adjustLabel}>
-                    Hizli duzenle ({item.unitType === 'PIECE' ? '1 tane' : '25 g'})
+                    Hızlı düzenle ({item.unitType === 'PIECE' ? '1 tane' : '25 g'})
                   </Text>
 
                   <Pressable
@@ -361,37 +365,39 @@ export default function FridgeTabScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F5F5F7',
   },
   content: {
-    paddingHorizontal: 18,
-    paddingBottom: 28,
-    gap: 18,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+    gap: 16,
   },
-  heroCard: {
-    backgroundColor: '#FFF7ED',
-    borderRadius: 28,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#FED7AA',
+  header: {
+    paddingTop: 14,
+    paddingBottom: 4,
     gap: 8,
+    alignItems: 'center',
   },
   heroEyebrow: {
-    color: '#C2410C',
-    fontSize: 12,
+    color: '#8E8E93',
+    fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 0.6,
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
   heroTitle: {
-    color: '#111827',
-    fontSize: 24,
-    fontWeight: '800',
+    color: '#111111',
+    fontSize: 34,
+    fontWeight: '700',
+    letterSpacing: -0.8,
+    textAlign: 'center',
   },
   heroBody: {
-    color: '#4B5563',
-    fontSize: 14,
-    lineHeight: 21,
+    color: '#6E6E73',
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    maxWidth: 320,
   },
   metricsGrid: {
     flexDirection: 'row',
@@ -403,31 +409,31 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E8E8ED',
     gap: 6,
   },
   metricLabel: {
-    color: '#6B7280',
+    color: '#8E8E93',
     fontSize: 12,
     fontWeight: '600',
   },
   metricValue: {
-    color: '#111827',
-    fontSize: 22,
-    fontWeight: '800',
+    color: '#111111',
+    fontSize: 21,
+    fontWeight: '700',
   },
   sectionCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E8E8ED',
     gap: 12,
   },
   sectionTitle: {
-    color: '#111827',
+    color: '#111111',
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   controlsRow: {
     flexDirection: 'row',
@@ -437,13 +443,13 @@ const styles = StyleSheet.create({
   quantityInput: {
     width: 88,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: '#E5E5EA',
     borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: '#F8FAFC',
-    color: '#111827',
-    fontSize: 15,
+    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
+    color: '#111111',
+    fontSize: 14,
     fontWeight: '600',
   },
   unitSwitch: {
@@ -455,35 +461,41 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    paddingVertical: 12,
+    borderColor: '#E5E5EA',
+    paddingVertical: 10,
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#FFFFFF',
   },
   unitButtonActive: {
-    borderColor: '#F97316',
-    backgroundColor: '#FFF1E6',
+    borderColor: '#1C1C1E',
+    backgroundColor: '#1C1C1E',
   },
   unitButtonText: {
-    color: '#475569',
-    fontSize: 13,
+    color: '#6E6E73',
+    fontSize: 12,
     fontWeight: '700',
   },
   unitButtonTextActive: {
-    color: '#C2410C',
+    color: '#FFFFFF',
   },
-  searchInput: {
+  searchInputWrap: {
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: '#E5E5EA',
     borderRadius: 16,
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: '#F8FAFC',
-    color: '#111827',
+    paddingVertical: 11,
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    color: '#111111',
     fontSize: 14,
   },
   inlineHint: {
-    color: '#64748B',
+    color: '#8E8E93',
     fontSize: 12,
   },
   errorText: {
@@ -492,7 +504,7 @@ const styles = StyleSheet.create({
   },
   productCard: {
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E8E8ED',
     borderRadius: 18,
     padding: 14,
     flexDirection: 'row',
@@ -505,28 +517,28 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   productName: {
-    color: '#111827',
+    color: '#111111',
     fontSize: 15,
     fontWeight: '700',
   },
   productMeta: {
-    color: '#4B5563',
+    color: '#6E6E73',
     fontSize: 12,
     lineHeight: 18,
   },
   productSubMeta: {
-    color: '#64748B',
+    color: '#8E8E93',
     fontSize: 12,
   },
   addButton: {
-    backgroundColor: '#F97316',
+    backgroundColor: '#1C1C1E',
     borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
   addButtonText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
   },
   buttonDisabled: {
@@ -538,24 +550,24 @@ const styles = StyleSheet.create({
   emptyCard: {
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#F8FAFC',
+    borderColor: '#E8E8ED',
+    backgroundColor: '#FFFFFF',
     padding: 16,
     gap: 6,
   },
   emptyTitle: {
-    color: '#111827',
+    color: '#111111',
     fontSize: 15,
     fontWeight: '700',
   },
   emptyBody: {
-    color: '#64748B',
+    color: '#6E6E73',
     fontSize: 13,
     lineHeight: 19,
   },
   fridgeCard: {
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E8E8ED',
     borderRadius: 18,
     padding: 14,
     gap: 12,
@@ -568,12 +580,12 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     borderRadius: 12,
-    backgroundColor: '#FEF2F2',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: '#F5F5F7',
+    paddingHorizontal: 11,
+    paddingVertical: 7,
   },
   deleteButtonText: {
-    color: '#B91C1C',
+    color: '#3A3A3C',
     fontSize: 12,
     fontWeight: '700',
   },
@@ -583,21 +595,21 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   adjustButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#FFF1E6',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F0F0F2',
     alignItems: 'center',
     justifyContent: 'center',
   },
   adjustButtonText: {
-    color: '#C2410C',
-    fontSize: 18,
-    fontWeight: '800',
+    color: '#1C1C1E',
+    fontSize: 17,
+    fontWeight: '700',
   },
   adjustLabel: {
     flex: 1,
-    color: '#4B5563',
+    color: '#6E6E73',
     fontSize: 12,
   },
   loggedOutState: {
@@ -608,13 +620,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   loggedOutTitle: {
-    color: '#111827',
+    color: '#111111',
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: '700',
     textAlign: 'center',
   },
   loggedOutBody: {
-    color: '#4B5563',
+    color: '#6E6E73',
     fontSize: 14,
     lineHeight: 21,
     textAlign: 'center',

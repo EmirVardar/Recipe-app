@@ -20,19 +20,19 @@ function formatValue(value: number | null | undefined, suffix = '') {
 function formatCategoryLabel(category: string | null | undefined) {
   switch (category) {
     case 'breakfast':
-      return 'Kahvalti';
+      return 'Kahvaltı';
     case 'lunch':
-      return 'Ogle Yemegi';
+      return 'Öğle Yemeği';
     case 'dinner':
-      return 'Aksam Yemegi';
+      return 'Akşam Yemeği';
     case 'dessert':
-      return 'Tatli';
+      return 'Tatlı';
     case 'snack':
-      return 'Atistirmalik';
+      return 'Atıştırmalık';
     case 'drink':
-      return 'Icecek';
+      return 'İçecek';
     case 'soup':
-      return 'Corba';
+      return 'Çorba';
     case 'salad':
       return 'Salata';
     default:
@@ -72,26 +72,26 @@ export default function RecipeDetailScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <Stack.Screen options={{ title: recipe?.title ?? 'Tarif Detayi', headerShown: true }} />
+      <Stack.Screen options={{ title: recipe?.title ?? 'Tarif Detayı', headerShown: true }} />
       <ScrollView contentContainerStyle={styles.content}>
         {!isLoggedIn ? <RecipeAccessBanner /> : null}
 
         {isLoggedIn && loading ? (
           <View style={styles.loaderWrap}>
             <ActivityIndicator size="large" color="#EA580C" />
-            <Text style={styles.loaderText}>Tarif detayi yukleniyor...</Text>
+            <Text style={styles.loaderText}>Tarif detayı yükleniyor...</Text>
           </View>
         ) : null}
 
         {isLoggedIn && errorMessage ? (
           <View style={styles.messageCard}>
-            <Text style={styles.messageTitle}>Baglanti Notu</Text>
+            <Text style={styles.messageTitle}>Bağlantı Notu</Text>
             <Text style={styles.messageBody}>{errorMessage}</Text>
           </View>
         ) : null}
 
         {isLoggedIn && recipe ? (
-          <View style={styles.detailCard}>
+          <View style={styles.detailLayout}>
             <Image
               source={{
                 uri:
@@ -101,11 +101,23 @@ export default function RecipeDetailScreen() {
               style={styles.heroImage}
             />
 
-            <Text style={styles.title}>{recipe.title}</Text>
-            <View style={styles.topMetaRow}>
-              <View style={styles.categoryBadge}>
-                <Text style={styles.categoryBadgeText}>{formatCategoryLabel(recipe.primaryCategory)}</Text>
+            <View style={styles.heroContent}>
+              <Text style={styles.eyebrow}>Tarif Detayı</Text>
+              <Text style={styles.title}>{recipe.title}</Text>
+
+              <View style={styles.topMetaRow}>
+                <View style={styles.categoryBadge}>
+                  <Text style={styles.categoryBadgeText}>{formatCategoryLabel(recipe.primaryCategory)}</Text>
+                </View>
+                <View style={styles.quickMeta}>
+                  <Text style={styles.quickMetaText}>{formatValue(recipe.readyInMinutes, ' dk')}</Text>
+                  <Text style={styles.quickMetaDot}>•</Text>
+                  <Text style={styles.quickMetaText}>{formatValue(recipe.servings, ' porsiyon')}</Text>
+                </View>
               </View>
+
+              {recipe.summary ? <Text style={styles.summary}>{recipe.summary}</Text> : null}
+
               <Pressable
                 style={styles.aiButton}
                 onPress={() =>
@@ -117,45 +129,54 @@ export default function RecipeDetailScreen() {
                     },
                   })
                 }>
-                <Ionicons name="sparkles-outline" size={16} color="#FFFFFF" />
-                <Text style={styles.aiButtonText}>AI&apos;a Sor</Text>
+                <Ionicons name="sparkles-outline" size={15} color="#FFFFFF" />
+                <Text style={styles.aiButtonText}>AI'a Sor</Text>
               </Pressable>
             </View>
 
-            <View style={styles.metrics}>
-              <View style={styles.metricPill}>
-                <Text style={styles.metricLabel}>Kalori</Text>
-                <Text style={styles.metricValue}>{formatValue(recipe.nutrition?.calories)}</Text>
-              </View>
-              <View style={styles.metricPill}>
-                <Text style={styles.metricLabel}>Protein</Text>
-                <Text style={styles.metricValue}>{formatValue(recipe.nutrition?.protein, ' g')}</Text>
-              </View>
-              <View style={styles.metricPill}>
-                <Text style={styles.metricLabel}>Karb</Text>
-                <Text style={styles.metricValue}>{formatValue(recipe.nutrition?.carbs, ' g')}</Text>
-              </View>
-              <View style={styles.metricPill}>
-                <Text style={styles.metricLabel}>Yag</Text>
-                <Text style={styles.metricValue}>{formatValue(recipe.nutrition?.fat, ' g')}</Text>
+            <View style={styles.metricsSection}>
+              <Text style={styles.sectionEyebrow}>Besin Değerleri</Text>
+              <View style={styles.metrics}>
+                <View style={styles.metricPill}>
+                  <Text style={styles.metricLabel}>Kalori</Text>
+                  <Text style={styles.metricValue}>{formatValue(recipe.nutrition?.calories)}</Text>
+                </View>
+                <View style={styles.metricPill}>
+                  <Text style={styles.metricLabel}>Protein</Text>
+                  <Text style={styles.metricValue}>{formatValue(recipe.nutrition?.protein, ' g')}</Text>
+                </View>
+                <View style={styles.metricPill}>
+                  <Text style={styles.metricLabel}>Karb</Text>
+                  <Text style={styles.metricValue}>{formatValue(recipe.nutrition?.carbs, ' g')}</Text>
+                </View>
+                <View style={styles.metricPill}>
+                  <Text style={styles.metricLabel}>Yağ</Text>
+                  <Text style={styles.metricValue}>{formatValue(recipe.nutrition?.fat, ' g')}</Text>
+                </View>
               </View>
             </View>
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Icindekiler</Text>
+              <Text style={styles.sectionEyebrow}>Malzemeler</Text>
+              <Text style={styles.sectionTitle}>İçindekiler</Text>
               {recipe.ingredients.map((ingredient, index) => (
-                <Text key={`${recipe.id}-${ingredient.ingredientId}-${index}`} style={styles.sectionItem}>
-                  • {ingredient.name}
-                </Text>
+                <View key={`${recipe.id}-${ingredient.ingredientId}-${index}`} style={styles.listRow}>
+                  <View style={styles.listBullet} />
+                  <Text style={styles.sectionItem}>{ingredient.name}</Text>
+                </View>
               ))}
             </View>
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Adimlar</Text>
+              <Text style={styles.sectionEyebrow}>Hazırlık</Text>
+              <Text style={styles.sectionTitle}>Adımlar</Text>
               {recipe.steps.map((step) => (
-                <Text key={`${recipe.id}-step-${step.stepNumber}`} style={styles.sectionItem}>
-                  {step.stepNumber}. {step.instruction}
-                </Text>
+                <View key={`${recipe.id}-step-${step.stepNumber}`} style={styles.stepRow}>
+                  <View style={styles.stepBadge}>
+                    <Text style={styles.stepBadgeText}>{step.stepNumber}</Text>
+                  </View>
+                  <Text style={styles.sectionItem}>{step.instruction}</Text>
+                </View>
               ))}
             </View>
           </View>
@@ -168,12 +189,13 @@ export default function RecipeDetailScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F5F5F7',
   },
   content: {
-    padding: 18,
-    gap: 18,
-    paddingBottom: 32,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    gap: 16,
+    paddingBottom: 36,
   },
   loaderWrap: {
     alignItems: 'center',
@@ -182,55 +204,71 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loaderText: {
-    color: '#6B7280',
+    color: '#6E6E73',
     fontSize: 15,
   },
   messageCard: {
-    backgroundColor: '#FFF7ED',
-    borderColor: '#FDBA74',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E8E8ED',
     borderWidth: 1,
     borderRadius: 20,
-    padding: 18,
+    padding: 16,
     gap: 6,
   },
   messageTitle: {
-    color: '#9A3412',
-    fontSize: 16,
+    color: '#111111',
+    fontSize: 15,
     fontWeight: '700',
   },
   messageBody: {
-    color: '#7C2D12',
+    color: '#6E6E73',
     fontSize: 14,
     lineHeight: 20,
   },
-  detailCard: {
-    gap: 18,
+  detailLayout: {
+    gap: 16,
   },
   heroImage: {
     width: '100%',
-    height: 240,
-    borderRadius: 28,
+    height: 264,
+    borderRadius: 30,
     backgroundColor: '#E5E7EB',
   },
+  heroContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: '#E8E8ED',
+    padding: 20,
+    gap: 12,
+  },
+  eyebrow: {
+    color: '#8E8E93',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1.6,
+  },
   title: {
-    color: '#111827',
-    fontSize: 30,
-    lineHeight: 36,
-    fontWeight: '800',
+    color: '#111111',
+    fontSize: 32,
+    lineHeight: 38,
+    fontWeight: '700',
+    letterSpacing: -0.8,
   },
   categoryBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#F5F5F7',
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
   categoryBadgeText: {
-    color: '#92400E',
-    fontSize: 11,
-    fontWeight: '800',
+    color: '#6E6E73',
+    fontSize: 10,
+    fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   topMetaRow: {
     flexDirection: 'row',
@@ -238,19 +276,47 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
-  aiButton: {
+  quickMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#111827',
+  },
+  quickMetaText: {
+    color: '#6E6E73',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  quickMetaDot: {
+    color: '#C7C7CC',
+    fontSize: 13,
+  },
+  summary: {
+    color: '#6E6E73',
+    fontSize: 15,
+    lineHeight: 23,
+  },
+  aiButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 7,
+    backgroundColor: '#1C1C1E',
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
   },
   aiButtonText: {
     color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  metricsSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: '#E8E8ED',
+    padding: 18,
+    gap: 12,
   },
   metrics: {
     flexDirection: 'row',
@@ -259,39 +325,78 @@ const styles = StyleSheet.create({
   },
   metricPill: {
     minWidth: '47%',
-    backgroundColor: '#FFF7ED',
+    backgroundColor: '#F5F5F7',
     borderRadius: 18,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 11,
     gap: 4,
   },
   metricLabel: {
-    color: '#9A3412',
-    fontSize: 11,
+    color: '#8E8E93',
+    fontSize: 10,
     fontWeight: '700',
     textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
   metricValue: {
-    color: '#111827',
+    color: '#111111',
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   section: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 22,
+    borderRadius: 28,
     padding: 18,
-    gap: 10,
+    gap: 12,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E8E8ED',
+  },
+  sectionEyebrow: {
+    color: '#8E8E93',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1.4,
   },
   sectionTitle: {
-    color: '#111827',
+    color: '#111111',
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   sectionItem: {
-    color: '#4B5563',
+    flex: 1,
+    color: '#3A3A3C',
     fontSize: 14,
-    lineHeight: 21,
+    lineHeight: 22,
+  },
+  listRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  listBullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#C7C7CC',
+    marginTop: 8,
+  },
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  stepBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F0F0F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepBadgeText: {
+    color: '#1C1C1E',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

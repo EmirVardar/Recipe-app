@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,10 +12,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import HealthKit, { BiologicalSex } from '@kingstinct/react-native-healthkit';
 
-import { getMedical, getNutrition, getProfile, login, register, updateMedical, updateNutrition, updateProfile } from '@/lib/api';
+import { getMedical, getNutrition, getProfile, updateMedical, updateNutrition, updateProfile } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 type ProfileFormState = {
@@ -41,7 +40,6 @@ type MedicalFormState = {
   intolerances: string;
 };
 
-type AuthScreen = 'getStarted' | 'login' | 'register';
 type DetailPanel = 'editProfile' | 'foodPreferences';
 type Choice = { label: string; value: string };
 
@@ -84,13 +82,7 @@ const INTOLERANCE_OPTIONS: string[] = ['Laktoz', 'Gluten', 'Fruktoz', 'Histamin'
 
 export default function ProfileTabScreen() {
   const { width: screenWidth } = useWindowDimensions();
-  const { accessToken, fullName, isLoggedIn, setSession } = useAuth();
-  const [authScreen, setAuthScreen] = useState<AuthScreen>('getStarted');
-  const [authEmail, setAuthEmail] = useState('');
-  const [authPassword, setAuthPassword] = useState('');
-  const [registerName, setRegisterName] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [authLoading, setAuthLoading] = useState(false);
+  const { accessToken, fullName, isLoggedIn } = useAuth();
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingNutrition, setSavingNutrition] = useState(false);
   const [savingMedical, setSavingMedical] = useState(false);
@@ -399,50 +391,6 @@ export default function ProfileTabScreen() {
     }
   };
 
-  const onLogin = async () => {
-    if (!authEmail || !authPassword) {
-      Alert.alert('Eksik bilgi', 'Email ve sifre gir.');
-      return;
-    }
-
-    setAuthLoading(true);
-    try {
-      const response = await login({ email: authEmail.trim(), password: authPassword });
-      setSession({ accessToken: response.accessToken, fullName: response.fullName || 'Community Member' });
-      setPrefillDone(false);
-      Alert.alert('Basarili', 'Giris yapildi.');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Bilinmeyen hata';
-      Alert.alert('Giris hatasi', message);
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const onRegister = async () => {
-    if (!registerName || !authEmail || !authPassword) {
-      Alert.alert('Eksik bilgi', 'Kayit icin ad, e-posta ve sifre gerekli.');
-      return;
-    }
-
-    setAuthLoading(true);
-    try {
-      const response = await register({
-        fullName: registerName.trim(),
-        email: authEmail.trim(),
-        password: authPassword,
-      });
-      setSession({ accessToken: response.accessToken, fullName: response.fullName || registerName.trim() });
-      setPrefillDone(false);
-      Alert.alert('Basarili', 'Hesap olusturuldu ve giris yapildi.');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Bilinmeyen hata';
-      Alert.alert('Kayit hatasi', message);
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
   const openFoodPreferencesPanel = () => {
     setDetailPanel('foodPreferences');
     Animated.timing(panelTranslateX, {
@@ -470,184 +418,7 @@ export default function ProfileTabScreen() {
   };
 
   if (!isLoggedIn) {
-    const renderGetStarted = () => (
-      <View style={styles.loggedOutContent}>
-        <View style={styles.collageWrap}>
-          <Image
-            source={{ uri: 'https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&w=1400&q=80' }}
-            style={styles.heroImage}
-            resizeMode="cover"
-          />
-          <View style={styles.collageFade1} />
-          <View style={styles.collageFade2} />
-          <View style={styles.collageFade3} />
-          <Pressable style={styles.collageCloseButton} onPress={() => setAuthScreen('login')}>
-            <Ionicons name="close" size={18} color="#3F3F46" />
-          </Pressable>
-        </View>
-
-        <Text style={styles.authHeroTitle}>Baslayin</Text>
-        <Text style={styles.authHeroSub}>
-          Tum lezzetli tarifleri ve ozellikleri{'\n'}kesfetmek icin kayit ol.
-        </Text>
-
-        <View style={styles.socialRow}>
-          <Pressable style={styles.socialButton}>
-            <Ionicons name="logo-google" size={24} color="#4285F4" />
-          </Pressable>
-          <Pressable style={styles.socialButton}>
-            <Ionicons name="logo-facebook" size={24} color="#1877F2" />
-          </Pressable>
-          <Pressable style={styles.socialButton}>
-            <Ionicons name="logo-apple" size={24} color="#111827" />
-          </Pressable>
-        </View>
-
-        <View style={styles.orLineWrap}>
-          <View style={styles.orLine} />
-          <Text style={styles.orText}>veya</Text>
-          <View style={styles.orLine} />
-        </View>
-
-        <Pressable style={styles.authPrimaryButton} onPress={() => setAuthScreen('register')}>
-          <Ionicons name="mail-outline" size={24} color="#FFFFFF" />
-          <Text style={styles.authPrimaryButtonText}>E-posta ile kayit ol</Text>
-        </Pressable>
-
-        <Text style={styles.authTerms}>
-          Kayit olarak <Text style={styles.linkText}>kullanim kosullarini</Text> ve{' '}
-          <Text style={styles.linkText}>gizlilik politikasini</Text> kabul ederim.
-        </Text>
-
-        <View style={styles.bottomSwitchWrap}>
-          <Text style={styles.bottomSwitchText}>Zaten hesabin var mi?</Text>
-          <Pressable onPress={() => setAuthScreen('login')}>
-            <Text style={styles.bottomSwitchLink}>Buradan giris yap</Text>
-          </Pressable>
-        </View>
-      </View>
-    );
-
-    const renderLogin = () => (
-      <View style={styles.authFormWrap}>
-        <View style={styles.authTopBar}>
-          <Pressable onPress={() => setAuthScreen('getStarted')}>
-            <Ionicons name="chevron-back" size={36} color="#3F3F46" />
-          </Pressable>
-          <Text style={styles.authTopTitle}>Giris Yap</Text>
-          <Pressable onPress={() => setAuthScreen('getStarted')}>
-            <Text style={styles.authSkip}>Gec</Text>
-          </Pressable>
-        </View>
-
-        <TextInput
-          value={authEmail}
-          onChangeText={setAuthEmail}
-          placeholder="E-posta"
-          placeholderTextColor="#6B7280"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          style={styles.authInput}
-        />
-        <View style={styles.authInputWithIcon}>
-          <TextInput
-            value={authPassword}
-            onChangeText={setAuthPassword}
-            placeholder="Sifre"
-            placeholderTextColor="#6B7280"
-            secureTextEntry={!showPassword}
-            autoCapitalize="none"
-            style={styles.authInputInner}
-          />
-          <Pressable onPress={() => setShowPassword((prev) => !prev)}>
-            <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={30} color="#5B5B5B" />
-          </Pressable>
-        </View>
-
-        <Text style={styles.forgotPass}>Sifreni mi unuttun?</Text>
-
-        <Pressable style={styles.authPrimaryButton} onPress={onLogin} disabled={authLoading}>
-          <Text style={styles.authPrimaryButtonText}>{authLoading ? 'Bekleyin...' : 'Devam Et'}</Text>
-        </Pressable>
-
-        <View style={styles.bottomSwitchWrapLarge}>
-          <Text style={styles.bottomSwitchText}>Hesabin yok mu?</Text>
-          <Pressable onPress={() => setAuthScreen('register')}>
-            <Text style={styles.bottomSwitchLink}>Kayit ol</Text>
-          </Pressable>
-        </View>
-      </View>
-    );
-
-    const renderRegister = () => (
-      <View style={styles.authFormWrap}>
-        <View style={styles.authTopBar}>
-          <Pressable onPress={() => setAuthScreen('getStarted')}>
-            <Ionicons name="chevron-back" size={36} color="#3F3F46" />
-          </Pressable>
-          <Text style={styles.authTopTitle}>E-posta ile Kayit</Text>
-          <Pressable onPress={() => setAuthScreen('getStarted')}>
-            <Text style={styles.authSkip}>Gec</Text>
-          </Pressable>
-        </View>
-
-        <TextInput
-          value={authEmail}
-          onChangeText={setAuthEmail}
-          placeholder="E-posta"
-          placeholderTextColor="#6B7280"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          style={styles.authInput}
-        />
-        <TextInput
-          value={registerName}
-          onChangeText={setRegisterName}
-          placeholder="Kullanici adi"
-          placeholderTextColor="#6B7280"
-          autoCapitalize="words"
-          style={styles.authInput}
-        />
-        <View style={styles.authInputWithIcon}>
-          <TextInput
-            value={authPassword}
-            onChangeText={setAuthPassword}
-            placeholder="Sifre"
-            placeholderTextColor="#6B7280"
-            secureTextEntry={!showPassword}
-            autoCapitalize="none"
-            style={styles.authInputInner}
-          />
-          <Pressable onPress={() => setShowPassword((prev) => !prev)}>
-            <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={30} color="#5B5B5B" />
-          </Pressable>
-        </View>
-
-        <Pressable style={styles.authPrimaryButton} onPress={onRegister} disabled={authLoading}>
-          <Text style={styles.authPrimaryButtonText}>{authLoading ? 'Bekleyin...' : 'Kayit Ol'}</Text>
-        </Pressable>
-
-        <Text style={styles.authTerms}>
-          Kayit olarak <Text style={styles.linkText}>kullanim kosullarini</Text> ve{' '}
-          <Text style={styles.linkText}>gizlilik politikasini</Text> kabul ederim.
-        </Text>
-
-        <View style={styles.bottomSwitchWrapLarge}>
-          <Text style={styles.bottomSwitchText}>Zaten hesabin var mi?</Text>
-          <Pressable onPress={() => setAuthScreen('login')}>
-            <Text style={styles.bottomSwitchLink}>Buradan giris yap</Text>
-          </Pressable>
-        </View>
-      </View>
-    );
-
-    return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
-        {authScreen === 'getStarted' ? renderGetStarted() : null}
-        {authScreen === 'login' ? renderLogin() : null}
-        {authScreen === 'register' ? renderRegister() : null}
-      </SafeAreaView>
-    );
+    return <Redirect href="/auth" />;
   }
 
   return (
@@ -662,6 +433,7 @@ export default function ProfileTabScreen() {
             },
           ]}>
           <ScrollView style={{ width: screenWidth }} contentContainerStyle={styles.content}>
+            <Text style={styles.pageEyebrow}>Hesabın</Text>
             <Text style={styles.pageTitle}>Profil</Text>
 
             <View style={styles.profileHeader}>
@@ -671,52 +443,24 @@ export default function ProfileTabScreen() {
 
               <View style={styles.profileMeta}>
                 <Text style={styles.fullName}>{fullName}</Text>
-                <Text style={styles.subTitle}>Topluluk uyesi</Text>
+                <Text style={styles.subTitle}>Topluluk üyesi</Text>
 
                 <Pressable style={styles.outlineButton} onPress={openEditProfilePanel}>
-                  <Text style={styles.outlineButtonText}>Profili duzenle</Text>
+                  <Text style={styles.outlineButtonText}>Profili düzenle</Text>
                 </Pressable>
               </View>
             </View>
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Hesap</Text>
-              <View style={styles.rowBetween}>
-                <Text style={styles.rowLabel}>Mevcut Plan</Text>
-                <Text style={styles.rowValue}>Ucretsiz</Text>
-              </View>
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Hesap Yonetimi</Text>
+              <Text style={styles.sectionTitle}>Hesap Yönetimi</Text>
               <Pressable style={styles.managementRow} onPress={openFoodPreferencesPanel}>
-                <Ionicons name="heart-outline" size={24} color="#111827" />
+                <Ionicons name="heart-outline" size={22} color="#1C1C1E" />
                 <View style={styles.managementTextWrap}>
                   <Text style={styles.managementTitle}>Beslenme Tercihleri</Text>
-                  <Text style={styles.managementSubtitle}>Sadece Senin Icin sekmesi icin gecerlidir</Text>
+                  <Text style={styles.managementSubtitle}>Sadece Senin İçin sekmesi için geçerlidir</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+                <Ionicons name="chevron-forward" size={18} color="#8E8E93" />
               </Pressable>
-
-              <Pressable style={styles.managementRow} onPress={() => router.push('/assistant-lab')}>
-                <Ionicons name="sparkles-outline" size={24} color="#111827" />
-                <View style={styles.managementTextWrap}>
-                  <Text style={styles.managementTitle}>AI Test Merkezi</Text>
-                  <Text style={styles.managementSubtitle}>Profil baglaminin AI yanitlarini nasil sekillendirdigini gor</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-              </Pressable>
-
-              <View style={styles.managementRow}>
-                <Ionicons name="refresh-outline" size={24} color="#111827" />
-                <View style={styles.managementTextWrap}>
-                  <Text style={styles.managementTitle}>Satin alimlari geri yukle</Text>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Sistem</Text>
             </View>
           </ScrollView>
 
@@ -726,7 +470,7 @@ export default function ProfileTabScreen() {
                 <Ionicons name="chevron-back" size={30} color="#111827" />
               </Pressable>
                 <Text style={styles.preferenceTitle}>
-                {detailPanel === 'editProfile' ? 'Profili Duzenle' : 'Beslenme Tercihleri'}
+                {detailPanel === 'editProfile' ? 'Profili Düzenle' : 'Beslenme Tercihleri'}
               </Text>
               <Pressable
                 onPress={detailPanel === 'editProfile' ? onSaveProfile : onSaveFoodPreferences}
@@ -749,11 +493,11 @@ export default function ProfileTabScreen() {
                   disabled={prefillingHealthProfile}>
                   <Ionicons name="heart-outline" size={18} color="#065F46" />
                   <Text style={styles.healthPrefillButtonText}>
-                    {prefillingHealthProfile ? 'Apple Saglik okunuyor...' : "Apple Saglik'tan doldur"}
+                    {prefillingHealthProfile ? 'Apple Sağlık okunuyor...' : "Apple Sağlık'tan doldur"}
                   </Text>
                 </Pressable>
 
-                <Text style={styles.fieldLabel}>Dogum tarihi</Text>
+                <Text style={styles.fieldLabel}>Doğum tarihi</Text>
                 <TextInput
                   value={profileForm.birthDate}
                   onChangeText={(value) => setProfileForm((prev) => ({ ...prev, birthDate: value }))}
@@ -827,10 +571,10 @@ export default function ProfileTabScreen() {
             ) : (
               <>
                 <View style={styles.detailPanelBody}>
-                  <Text style={styles.sectionTitle}>Tibbi Bilgiler</Text>
-                  <Text style={styles.itemHint}>Guvenlik filtreleri icin saglik bilgileri.</Text>
+                  <Text style={styles.sectionTitle}>Tıbbi Bilgiler</Text>
+                  <Text style={styles.itemHint}>Güvenlik filtreleri için sağlık bilgileri.</Text>
 
-                  <Text style={styles.fieldLabel}>Kronik rahatsizliklar</Text>
+                  <Text style={styles.fieldLabel}>Kronik rahatsızlıklar</Text>
                   <View style={styles.chipsWrap}>
                     {CHRONIC_OPTIONS.map((opt) => (
                       <Pressable
@@ -846,15 +590,15 @@ export default function ProfileTabScreen() {
                   <TextInput
                     value={customChronic}
                     onChangeText={setCustomChronic}
-                    placeholder="Diger kronik durumlar (virgulle ayir)"
+                    placeholder="Diğer kronik durumlar (virgülle ayır)"
                     placeholderTextColor="#9CA3AF"
                     style={styles.input}
                   />
-                  <Text style={styles.fieldLabel}>Ilaclar</Text>
+                  <Text style={styles.fieldLabel}>İlaçlar</Text>
                   <TextInput
                     value={medicalForm.medications}
                     onChangeText={(value) => setMedicalForm((prev) => ({ ...prev, medications: value }))}
-                    placeholder="Ilaclar"
+                    placeholder="İlaçlar"
                     placeholderTextColor="#9CA3AF"
                     style={styles.input}
                   />
@@ -875,7 +619,7 @@ export default function ProfileTabScreen() {
                   <TextInput
                     value={customAllergies}
                     onChangeText={setCustomAllergies}
-                    placeholder="Diger alerjiler (virgulle ayir)"
+                    placeholder="Diğer alerjiler (virgülle ayır)"
                     placeholderTextColor="#9CA3AF"
                     style={styles.input}
                   />
@@ -899,7 +643,7 @@ export default function ProfileTabScreen() {
                   <TextInput
                     value={customIntolerances}
                     onChangeText={setCustomIntolerances}
-                    placeholder="Diger intoleranslar (virgulle ayir)"
+                    placeholder="Diğer intoleranslar (virgülle ayır)"
                     placeholderTextColor="#9CA3AF"
                     style={styles.input}
                   />
@@ -907,7 +651,7 @@ export default function ProfileTabScreen() {
 
                 <View style={[styles.detailPanelBody, { marginTop: 12 }]}>
                   <Text style={styles.sectionTitle}>Beslenme Tercihleri</Text>
-                  <Text style={styles.itemHint}>Sadece Senin Icin sekmesi icin gecerlidir</Text>
+                  <Text style={styles.itemHint}>Sadece Senin İçin sekmesi için geçerlidir</Text>
 
                   <Text style={styles.fieldLabel}>Diyet tipi</Text>
                   <View style={styles.chipsWrap}>
@@ -923,11 +667,11 @@ export default function ProfileTabScreen() {
                       </Pressable>
                     ))}
                   </View>
-                  <Text style={styles.fieldLabel}>Kacinilacak yiyecekler</Text>
+                  <Text style={styles.fieldLabel}>Kaçınılacak yiyecekler</Text>
                   <TextInput
                     value={nutritionForm.avoidFoods}
                     onChangeText={(value) => setNutritionForm((prev) => ({ ...prev, avoidFoods: value }))}
-                    placeholder="Kacinilacak yiyecekler (virgulle ayir)"
+                    placeholder="Kaçınılacak yiyecekler (virgülle ayır)"
                     placeholderTextColor="#9CA3AF"
                     style={styles.input}
                   />
@@ -935,11 +679,11 @@ export default function ProfileTabScreen() {
                   <TextInput
                     value={nutritionForm.preferredFoods}
                     onChangeText={(value) => setNutritionForm((prev) => ({ ...prev, preferredFoods: value }))}
-                    placeholder="Tercih edilen yiyecekler (virgulle ayir)"
+                    placeholder="Tercih edilen yiyecekler (virgülle ayır)"
                     placeholderTextColor="#9CA3AF"
                     style={styles.input}
                   />
-                  <Text style={styles.fieldLabel}>Butce seviyesi</Text>
+                  <Text style={styles.fieldLabel}>Bütçe seviyesi</Text>
                   <View style={styles.chipsWrap}>
                     {BUDGET_OPTIONS.map((opt) => (
                       <Pressable
@@ -969,11 +713,11 @@ export default function ProfileTabScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F5F5F7',
   },
   content: {
     paddingHorizontal: 20,
-    paddingBottom: 28,
+    paddingBottom: 32,
   },
   profilePanelsViewport: {
     flex: 1,
@@ -983,35 +727,48 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flex: 1,
   },
-  pageTitle: {
-    fontSize: 24,
-    lineHeight: 30,
+  pageEyebrow: {
+    color: '#8E8E93',
+    fontSize: 11,
     fontWeight: '700',
-    color: '#111827',
-    marginTop: 4,
-    marginBottom: 14,
+    letterSpacing: 1.8,
+    textTransform: 'uppercase',
+    marginTop: 14,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  pageTitle: {
+    fontSize: 34,
+    lineHeight: 40,
+    fontWeight: '700',
+    color: '#111111',
+    marginBottom: 16,
+    textAlign: 'center',
+    letterSpacing: -0.8,
   },
   profileHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    paddingBottom: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#E8E8ED',
+    borderRadius: 28,
+    backgroundColor: '#FFFFFF',
     marginBottom: 16,
   },
   avatar: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
-    backgroundColor: '#FACC15',
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+    backgroundColor: '#F0F0F2',
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    fontSize: 38,
+    fontSize: 32,
     fontWeight: '700',
-    color: '#111827',
+    color: '#111111',
   },
   profileMeta: {
     flex: 1,
@@ -1021,37 +778,40 @@ const styles = StyleSheet.create({
     fontSize: 20,
     lineHeight: 24,
     fontWeight: '700',
-    color: '#111827',
+    color: '#111111',
   },
   subTitle: {
     fontSize: 13,
-    color: '#4B5563',
+    color: '#6E6E73',
     marginBottom: 6,
   },
   outlineButton: {
-    borderWidth: 1.2,
-    borderColor: '#0F766E',
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
     borderRadius: 999,
-    paddingHorizontal: 18,
+    paddingHorizontal: 14,
     paddingVertical: 8,
     alignSelf: 'flex-start',
+    backgroundColor: '#FFFFFF',
   },
   outlineButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#0F766E',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1C1C1E',
   },
   section: {
     marginBottom: 16,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#E8E8ED',
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 18,
     lineHeight: 22,
     fontWeight: '700',
-    color: '#111827',
+    color: '#111111',
     marginBottom: 12,
   },
   rowBetween: {
@@ -1062,57 +822,55 @@ const styles = StyleSheet.create({
   },
   rowLabel: {
     fontSize: 14,
-    color: '#111827',
+    color: '#3A3A3C',
   },
   rowValue: {
     fontSize: 14,
-    color: '#111827',
-    fontWeight: '500',
+    color: '#111111',
+    fontWeight: '600',
   },
   managementRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   managementTextWrap: {
     flex: 1,
   },
   managementTitle: {
     fontSize: 14,
-    color: '#111827',
-    fontWeight: '500',
+    color: '#111111',
+    fontWeight: '600',
   },
   managementSubtitle: {
     marginTop: 2,
     fontSize: 12,
-    color: '#6B7280',
+    color: '#6E6E73',
   },
   preferenceHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 16,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    paddingBottom: 8,
   },
   preferenceTitle: {
-    fontSize: 16,
-    color: '#111827',
-    fontWeight: '600',
+    fontSize: 18,
+    color: '#111111',
+    fontWeight: '700',
   },
   preferenceSaveText: {
-    fontSize: 16,
-    color: '#F97316',
-    fontWeight: '500',
+    fontSize: 14,
+    color: '#1C1C1E',
+    fontWeight: '700',
   },
   detailPanelBody: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 0,
-    padding: 2,
-    borderWidth: 0,
-    borderColor: 'transparent',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#E8E8ED',
   },
   formCard: {
     backgroundColor: '#FFF1E6',
@@ -1129,26 +887,28 @@ const styles = StyleSheet.create({
   },
   itemHint: {
     fontSize: 12,
-    color: '#4B5563',
+    color: '#6E6E73',
     marginBottom: 10,
   },
   input: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 10,
+    borderColor: '#E5E5EA',
+    borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 13,
-    color: '#111827',
-    marginBottom: 10,
+    paddingVertical: 11,
+    fontSize: 14,
+    color: '#111111',
+    marginBottom: 12,
   },
   fieldLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#374151',
+    color: '#8E8E93',
     marginBottom: 5,
-    marginTop: 3,
+    marginTop: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
   chipsWrap: {
     flexDirection: 'row',
@@ -1161,46 +921,47 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#F8FAFC',
+    borderColor: '#E5E5EA',
+    backgroundColor: '#FFFFFF',
   },
   chipActive: {
-    borderColor: '#F97316',
-    backgroundColor: '#FFF1E6',
+    borderColor: '#1C1C1E',
+    backgroundColor: '#1C1C1E',
   },
   chipText: {
     fontSize: 12,
-    color: '#374151',
+    color: '#3A3A3C',
+    fontWeight: '600',
   },
   chipTextActive: {
-    color: '#C2410C',
-    fontWeight: '600',
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   editAvatarWrap: {
     alignItems: 'center',
     marginBottom: 12,
   },
   editAvatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#FACC15',
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    backgroundColor: '#F0F0F2',
     alignItems: 'center',
     justifyContent: 'center',
   },
   editAvatarText: {
-    fontSize: 40,
+    fontSize: 36,
     fontWeight: '700',
-    color: '#111827',
+    color: '#111111',
   },
   healthPrefillButton: {
     marginBottom: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderRadius: 18,
-    backgroundColor: '#ECFDF5',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#A7F3D0',
+    borderColor: '#E5E5EA',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1210,21 +971,21 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   healthPrefillButtonText: {
-    color: '#065F46',
-    fontSize: 14,
+    color: '#1C1C1E',
+    fontSize: 13,
     fontWeight: '700',
   },
   primaryButton: {
     marginTop: 6,
     borderRadius: 999,
-    backgroundColor: '#F97316',
-    paddingVertical: 12,
+    backgroundColor: '#1C1C1E',
+    paddingVertical: 10,
     alignItems: 'center',
   },
   primaryButtonText: {
     color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
   },
   loggedOutContent: {
     flex: 1,

@@ -2,10 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 
 const colors = {
-  accent: '#F97316',
-  inactive: '#9CA3AF',
-  background: '#F8FAFC',
-  border: '#FDBA74',
+  accent: '#1C1C1E',
+  inactive: '#8E8E93',
+  background: '#F5F5F7',
+  border: '#E5E5EA',
 };
 
 export default function TabsLayout() {
@@ -19,13 +19,13 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
           borderTopColor: colors.border,
-          height: 76,
-          paddingTop: 8,
-          paddingBottom: 10,
+          height: 72,
+          paddingTop: 6,
+          paddingBottom: 8,
         },
         tabBarLabelStyle: {
           fontSize: 11,
-          fontWeight: '500',
+          fontWeight: '600',
         },
         sceneStyle: {
           backgroundColor: colors.background,
@@ -33,7 +33,7 @@ export default function TabsLayout() {
         tabBarIcon: ({ color, size }) => {
           const iconByRoute: Record<string, keyof typeof Ionicons.glyphMap> = {
             index: 'home-outline',
-            search: 'search-outline',
+            search: 'sparkles-outline',
             fridge: 'cube-outline',
             'my-recipes': 'heart-outline',
             health: 'fitness-outline',
@@ -42,7 +42,7 @@ export default function TabsLayout() {
 
           const focusedIconByRoute: Record<string, keyof typeof Ionicons.glyphMap> = {
             index: 'home',
-            search: 'search',
+            search: 'sparkles',
             fridge: 'cube',
             'my-recipes': 'heart',
             health: 'fitness',
@@ -57,16 +57,16 @@ export default function TabsLayout() {
         },
       })}>
       <Tabs.Screen name="index" options={{ title: 'Ana Sayfa' }} />
-      <Tabs.Screen name="search" options={{ title: 'Ara' }} />
-      <Tabs.Screen name="fridge" options={{ title: 'Buzdolabi' }} />
+      <Tabs.Screen name="search" options={{ title: 'Assistant' }} />
+      <Tabs.Screen name="fridge" options={{ title: 'Buzdolabı' }} />
       <Tabs.Screen name="my-recipes" options={{ title: 'Tariflerim' }} />
       <Tabs.Screen
         name="health"
         options={{
-          title: 'Saglik',
+          title: 'Sağlık',
           tabBarLabelStyle: {
             fontSize: 9,
-            fontWeight: '500',
+            fontWeight: '600',
           },
         }}
       />
