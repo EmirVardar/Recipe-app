@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Easing,
   KeyboardAvoidingView,
@@ -17,7 +19,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { chatWithAssistant, chatWithAssistantVoice } from '@/lib/api';
+import { chatWithAssistant, chatWithAssistantVoice, recognizeFood } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 type ChatMessage = {
@@ -309,6 +311,53 @@ export function AssistantChatPanel({
 
   const scrollToBottom = () => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+  };
+
+  const handleImagePick = async () => {
+    if (loading) return;
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.8,
+        allowsEditing: false,
+      });
+
+      if (result.canceled || !result.assets || !result.assets[0]) return;
+
+      const imageUri = result.assets[0].uri;
+      setLoading(true);
+      setErrorMessage('');
+
+      const { food_name, confidence } = await recognizeFood(imageUri);
+      const readableName = food_name.replace(/_/g, ' ');
+      const message = `${readableName} tarifi ver`;
+
+      setMessages((current) => [
+        ...current,
+        {
+          id: `user-${Date.now()}`,
+          role: 'user',
+          text: `📷 Fotoğraf yüklendi — ${readableName} (${Math.round(confidence * 100)}% emin)`,
+          mode: 'text',
+        },
+      ]);
+
+      if (!accessToken || !isLoggedIn) {
+        setErrorMessage('Tarif almak için giriş yapman gerekiyor.');
+        return;
+      }
+
+      const response = await chatWithAssistant(accessToken, message);
+      pushAssistantMessage(buildAssistantText(response.answer), { mode: 'text' });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      Alert.alert('Hata', msg);
+      setErrorMessage(msg);
+    } finally {
+      setLoading(false);
+      scrollToBottom();
+    }
   };
 
   const handleSend = async (suggestedMessage?: string) => {
@@ -642,6 +691,13 @@ export function AssistantChatPanel({
             </View>
 
             <View style={styles.inputRow}>
+              <Pressable
+                style={[styles.cameraButton, loading ? styles.disabledButton : null]}
+                onPress={() => void handleImagePick()}
+                disabled={loading}>
+                <Ionicons name="camera" size={20} color="#111111" />
+              </Pressable>
+
               <TextInput
                 value={input}
                 onChangeText={setInput}
@@ -948,6 +1004,14 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     fontSize: 15,
     color: '#111827',
+  },
+  cameraButton: {
+    backgroundColor: '#E5E7EB',
+    borderRadius: 18,
+    width: 52,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   micButton: {
     backgroundColor: '#E5E7EB',

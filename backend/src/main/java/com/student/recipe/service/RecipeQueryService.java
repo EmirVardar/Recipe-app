@@ -51,7 +51,7 @@ public class RecipeQueryService {
         String normalizedCategory = category == null ? "" : category.trim().toLowerCase();
         Set<Long> favoriteRecipeIds = recipeFavoriteService.getFavoriteRecipeIds(email);
 
-        List<Recipe> recipes = recipeRepository.searchRecipes(
+        List<Long> ids = recipeRepository.searchRecipeIds(
                 normalizedQuery,
                 minCalories,
                 maxCalories,
@@ -62,6 +62,17 @@ public class RecipeQueryService {
                 vegan,
                 normalizedCategory
         );
+
+        if (ids.isEmpty()) return List.of();
+
+        java.util.Map<Long, Recipe> recipeMap = recipeRepository.findAllById(ids)
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(Recipe::getId, r -> r));
+
+        List<Recipe> recipes = ids.stream()
+                .map(recipeMap::get)
+                .filter(java.util.Objects::nonNull)
+                .toList();
 
         return recipes
                 .stream()

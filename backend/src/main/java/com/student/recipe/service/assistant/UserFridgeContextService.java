@@ -26,17 +26,17 @@ public class UserFridgeContextService {
     public String buildFridgeContext(String email) {
         List<FridgeItemResponseDto> items = userFridgeService.getItems(email);
         if (items.isEmpty()) {
-            return "=== FRIDGE ITEMS ===\n(No items in the fridge.)";
+            return "=== BUZDOLABI İÇERİĞİ ===\n(Buzdolabında ürün yok.)";
         }
 
-        StringBuilder sb = new StringBuilder("=== FRIDGE ITEMS ===\n");
+        StringBuilder sb = new StringBuilder("=== BUZDOLABI İÇERİĞİ ===\n");
         for (FridgeItemResponseDto item : items) {
             sb.append("- ")
                     .append(item.foodName())
                     .append(": ")
                     .append(formatNumber(item.quantity()))
                     .append(' ')
-                    .append("PIECE".equals(item.unitType()) ? "pieces" : "g")
+                    .append("PIECE".equals(item.unitType()) ? "adet" : "g")
                     .append(" (")
                     .append(formatNumber(item.calories()))
                     .append(" kcal")
@@ -45,6 +45,7 @@ public class UserFridgeContextService {
 
         return sb.toString().trim();
     }
+
 
     private String formatNumber(Double value) {
         if (value == null) {

@@ -297,7 +297,39 @@ export function getApiBaseUrl(): string {
     return 'http://10.0.2.2:8080';
   }
 
-return 'http://172.16.1.93:8080';
+  return 'http://172.16.1.42:8080';
+}
+
+export function getMlServiceUrl(): string {
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:8001';
+  }
+  return 'http://172.16.1.42:8001';
+}
+
+export type FoodRecognitionResponse = {
+  food_name: string;
+  confidence: number;
+};
+
+export async function recognizeFood(imageUri: string): Promise<FoodRecognitionResponse> {
+  const formData = new FormData();
+  formData.append('file', {
+    uri: imageUri,
+    name: 'food.jpg',
+    type: 'image/jpeg',
+  } as unknown as Blob);
+
+  const response = await fetch(`${getMlServiceUrl()}/predict`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error('Yemek tanıma başarısız oldu.');
+  }
+
+  return response.json() as Promise<FoodRecognitionResponse>;
 }
 
 export async function register(payload: RegisterRequest): Promise<AuthResponse> {

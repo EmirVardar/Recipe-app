@@ -14,41 +14,41 @@ public class UserAiContextPromptBuilder {
         List<String> parts = new ArrayList<>();
 
         if (context.age() != null) {
-            parts.add("The user is " + context.age() + " years old");
+            parts.add("Kullanıcı " + context.age() + " yaşında");
         } else {
-            parts.add("The user's age is not specified");
+            parts.add("Kullanıcının yaşı belirtilmemiş");
         }
 
         if (hasText(context.sex())) {
-            parts.add("sex is " + readableEnum(context.sex()));
+            parts.add("cinsiyet: " + readableEnum(context.sex()));
         }
         if (context.heightCm() != null) {
-            parts.add(formatNumber(context.heightCm()) + " cm tall");
+            parts.add("boy: " + formatNumber(context.heightCm()) + " cm");
         }
         if (context.weightKg() != null) {
-            parts.add("weighs " + formatNumber(context.weightKg()) + " kg");
+            parts.add("kilo: " + formatNumber(context.weightKg()) + " kg");
         }
         if (hasText(context.activityLevel())) {
-            parts.add("activity level is " + readableEnum(context.activityLevel()));
+            parts.add("aktivite seviyesi: " + readableEnum(context.activityLevel()));
         }
         if (hasText(context.goal())) {
-            parts.add("goal is " + readableEnum(context.goal()));
+            parts.add("hedef: " + readableEnum(context.goal()));
         }
         if (hasText(context.dietType())) {
-            parts.add("diet type is " + readableEnum(context.dietType()));
+            parts.add("diyet tipi: " + readableEnum(context.dietType()));
         }
         if (hasText(context.budgetLevel())) {
-            parts.add("budget preference is " + readableEnum(context.budgetLevel()));
+            parts.add("bütçe tercihi: " + readableEnum(context.budgetLevel()));
         }
 
         StringBuilder paragraph = new StringBuilder(String.join(", ", parts)).append(".");
 
-        appendList(paragraph, "Chronic conditions", context.chronicConditions());
-        appendList(paragraph, "Medications", context.medications());
-        appendList(paragraph, "Allergies", context.allergies());
-        appendList(paragraph, "Intolerances", context.intolerances());
-        appendList(paragraph, "Foods to avoid", context.avoidFoods());
-        appendList(paragraph, "Preferred foods", context.preferredFoods());
+        appendList(paragraph, "Kronik hastalıklar", context.chronicConditions());
+        appendList(paragraph, "İlaçlar", context.medications());
+        appendList(paragraph, "Alerjiler", context.allergies());
+        appendList(paragraph, "İntoleranslar", context.intolerances());
+        appendList(paragraph, "Kaçınılan yiyecekler", context.avoidFoods());
+        appendList(paragraph, "Tercih edilen yiyecekler", context.preferredFoods());
 
         return paragraph.toString().replaceAll("\\s+", " ").trim();
     }

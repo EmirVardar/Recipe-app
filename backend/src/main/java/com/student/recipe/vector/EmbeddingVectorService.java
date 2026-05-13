@@ -62,46 +62,44 @@ public class EmbeddingVectorService {
 
     private String buildRecipeDocument(Recipe recipe) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Recipe: ").append(resolveRecipeTitle(recipe)).append("\n");
+        sb.append("Tarif: ").append(resolveRecipeTitle(recipe)).append("\n");
 
         List<String> flags = new ArrayList<>();
-        if (Boolean.TRUE.equals(recipe.getVegetarian())) flags.add("vegetarian");
+        if (Boolean.TRUE.equals(recipe.getVegetarian())) flags.add("vejetaryen");
         if (Boolean.TRUE.equals(recipe.getVegan()))       flags.add("vegan");
-        if (Boolean.TRUE.equals(recipe.getGlutenFree()))  flags.add("gluten-free");
-        if (Boolean.TRUE.equals(recipe.getDairyFree()))   flags.add("dairy-free");
-        if (Boolean.TRUE.equals(recipe.getLowFodmap()))   flags.add("low-fodmap");
+        if (Boolean.TRUE.equals(recipe.getGlutenFree()))  flags.add("glutensiz");
+        if (Boolean.TRUE.equals(recipe.getDairyFree()))   flags.add("sütsüz");
+        if (Boolean.TRUE.equals(recipe.getLowFodmap()))   flags.add("düşük fodmap");
         if (!flags.isEmpty())
-            sb.append("Diet: ").append(String.join(", ", flags)).append("\n");
+            sb.append("Diyet: ").append(String.join(", ", flags)).append("\n");
 
         List<String> tags = recipe.getRecipeTags().stream()
-                .map(this::resolveTagValue)
-                .toList();
+                .map(this::resolveTagValue).toList();
         if (!tags.isEmpty())
-            sb.append("Tags: ").append(String.join(", ", tags)).append("\n");
+            sb.append("Etiketler: ").append(String.join(", ", tags)).append("\n");
 
         List<String> ingredients = recipe.getRecipeIngredients().stream()
-                .map(ri -> resolveIngredientName(ri.getIngredient()))
-                .toList();
+                .map(ri -> resolveIngredientName(ri.getIngredient())).toList();
         if (!ingredients.isEmpty())
-            sb.append("Ingredients: ").append(String.join(", ", ingredients)).append("\n");
+            sb.append("Malzemeler: ").append(String.join(", ", ingredients)).append("\n");
 
         if (recipe.getReadyInMinutes() != null)
-            sb.append("Ready in: ").append(recipe.getReadyInMinutes()).append(" minutes\n");
+            sb.append("Hazırlık süresi: ").append(recipe.getReadyInMinutes()).append(" dakika\n");
 
         var n = recipe.getRecipeNutrition();
         if (n != null) {
-            sb.append("Nutrition per serving: ");
+            sb.append("Besin değerleri (porsiyon başına): ");
             if (n.getCalories() != null) sb.append(n.getCalories().intValue()).append(" kcal, ");
             if (n.getProtein()  != null) sb.append(n.getProtein().intValue()).append("g protein, ");
-            if (n.getCarbs()    != null) sb.append(n.getCarbs().intValue()).append("g carbs, ");
-            if (n.getFat()      != null) sb.append(n.getFat().intValue()).append("g fat");
+            if (n.getCarbs()    != null) sb.append(n.getCarbs().intValue()).append("g karbonhidrat, ");
+            if (n.getFat()      != null) sb.append(n.getFat().intValue()).append("g yağ");
             sb.append("\n");
         }
 
         recipe.getRecipeSteps().stream()
                 .sorted(Comparator.comparing(RecipeStep::getStepNumber))
                 .limit(3)
-                .forEach(s -> sb.append("Step ").append(s.getStepNumber())
+                .forEach(s -> sb.append("Adım ").append(s.getStepNumber())
                         .append(": ").append(resolveStepInstruction(s)).append("\n"));
 
         return sb.toString().trim();
@@ -123,9 +121,9 @@ public class EmbeddingVectorService {
 
     private String buildFoodDocument(FoodProduct food) {
         return String.format("""
-                Food: %s
-                Per 100g: %.0f kcal, %.1fg protein, %.1fg carbs, %.1fg fat
-                """,
+            Ürün: %s
+            100g başına: %.0f kcal, %.1fg protein, %.1fg karbonhidrat, %.1fg yağ
+            """,
                 resolveFoodName(food),
                 orZero(food.getCaloriesPer100g()),
                 orZero(food.getProteinPer100g()),

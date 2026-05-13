@@ -29,10 +29,10 @@ public class UserDailyHealthContextService {
             }
 
             return String.format("""
-                    === TODAY'S HEALTH SUMMARY ===
-                    Steps: %d
-                    Active calories burned: %.0f kcal
-                    """,
+        === BUGÜNKÜ SAĞLIK ÖZETİ ===
+        Adım sayısı: %d
+        Yakılan aktif kalori: %.0f kcal
+        """,
                     healthRecord.getAdim() != null ? healthRecord.getAdim() : 0,
                     healthRecord.getKalori() != null ? healthRecord.getKalori() : 0.0
             );

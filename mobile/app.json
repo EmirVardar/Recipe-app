@@ -12,6 +12,7 @@
       "newArchEnabled": true,
       "supportsTablet": true,
       "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Yemek fotografindan tarif almak icin galeri erisimi gerekiyor.",
         "NSMicrophoneUsageDescription": "Sesli sohbet icin mikrofon erisimi gerekiyor.",
         "NSHealthShareUsageDescription": "Adim, uyku, kalori ve profil bilgilerini okumak icin HealthKit erisimi gerekiyor.",
         "NSHealthUpdateUsageDescription": "Saglik verilerini senkronize etmek icin HealthKit erisimi gerekiyor."
@@ -42,6 +43,12 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Yemek fotografindan tarif almak icin galeri erisimi gerekiyor."
+        }
+      ],
       [
         "expo-av",
         {

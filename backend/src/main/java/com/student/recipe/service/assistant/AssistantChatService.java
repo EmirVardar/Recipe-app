@@ -146,34 +146,31 @@ public class AssistantChatService {
         List<ConversationMessage> history = conversationMemoryService.getLastMessages(conversation.getId(), HISTORY_LIMIT);
         String historyBlock = formatHistory(history);
 
-        // 1) Pending action var mı kontrol et
         if (conversation.getPendingActionType() != null) {
             return handlePendingConfirmation(userEmail, message, conversation, historyBlock);
         }
 
-        // 2) Intent detection
+        if (isConversationMemoryQuery(message.trim())) {
+            return handleMemoryQuery(userEmail, message, conversation, historyBlock);
+        }
+
         String intentJson = openAiService.chat(INTENT_SYSTEM_PROMPT, message.trim());
         String intent = extractIntent(intentJson);
 
-        // 3) Intent'e göre yönlendir
         if ("LOG_MEAL".equals(intent)) {
             return handleLogMealIntent(userEmail, message, intentJson, conversation, historyBlock);
         }
-
         if ("PERSONAL_QUERY".equals(intent)) {
             return handlePersonalQuery(userEmail, message, conversation, historyBlock);
         }
-
         if ("FRIDGE_QUERY".equals(intent)) {
             return handleFridgeQuery(userEmail, message, conversation, historyBlock);
         }
-
         if ("FRIDGE_ADD_ITEM".equals(intent)) {
             return handleFridgeAddIntent(userEmail, message, intentJson, conversation, historyBlock);
         }
 
-        // 4) OTHER → Normal RAG flow
-        return handleNormalChat(userEmail, message, conversation, historyBlock);
+        return handleNormalChat(userEmail, message, conversation, historyBlock, history);
     }
 
     // ── PENDING CONFIRMATION ────────────────────────────────────────
@@ -296,8 +293,8 @@ public class AssistantChatService {
             String mealType = (String) intentData.getOrDefault("meal_type", "DINNER");
             double servings = ((Number) intentData.getOrDefault("servings", 1.0)).doubleValue();
 
-            // ChromaDB'den en yakın sonucu al - recipe veya food fark etmez
-            List<DocumentMatch> matches = vectorService.findRelevant(foodName, 5);
+            String mealSearchQuery = expandFoodQuery(foodName);
+            List<DocumentMatch> matches = vectorService.findRelevant(mealSearchQuery, 5);
             DocumentMatch bestMatch = matches.stream()
                     .filter(m -> m.distance() <= RELEVANCE_THRESHOLD)
                     .filter(m -> "recipe".equals(m.metadata().get("kind"))
@@ -369,7 +366,8 @@ public class AssistantChatService {
             return response(answer);
 
         } catch (Exception e) {
-            return handleNormalChat(userEmail, message, conversation, historyBlock);
+            List<ConversationMessage> history = conversationMemoryService.getLastMessages(conversation.getId(), HISTORY_LIMIT);
+            return handleNormalChat(userEmail, message, conversation, historyBlock, history);
         }
     }
 
@@ -384,17 +382,17 @@ public class AssistantChatService {
         String dailyHealthContext = userDailyHealthContextService.buildTodayHealthSummary();
 
         String userPrompt = """
-                === USER PROFILE ===
+                === KULLANICI PROFİLİ ===
                 %s
                 
                 %s
 
                 %s
                 
-                === CONVERSATION HISTORY ===
+                === KONUŞMA GEÇMİŞİ ===
                 %s
                 
-                === USER QUESTION ===
+                === KULLANICI SORUSU ===
                 %s
                 
                 Sadece kullanicinin profiline ve bugunku beslenme kaydina gore cevap ver.
@@ -418,31 +416,53 @@ public class AssistantChatService {
     // ── NORMAL CHAT (RAG) ───────────────────────────────────────────
 
     private AssistantChatResponseDto handleNormalChat(
-            String userEmail, String message, Conversation conversation, String historyBlock) {
+            String userEmail, String message, Conversation conversation, String historyBlock, List<ConversationMessage> history) {
 
         UserAiProfileContextDto context = userAiProfileContextService.buildContext(userEmail);
         String profileContext = userAiContextPromptBuilder.buildProfileParagraph(context);
         String dailyNutritionContext = buildDailyNutritionContext(userEmail);
         String dailyHealthContext = userDailyHealthContextService.buildTodayHealthSummary();
 
-        List<DocumentMatch> matches = vectorService.findRelevant(message.trim(), 5);
-        String ragContext = buildRagContext(matches);
+        String ragQuery = buildRagQuery(message.trim(), history);
+        String searchQuery = openAiService.chat(
+                "Kullanıcının mesajından sadece aranacak yemek veya tarif adını çıkar. Sadece ismi yaz, başka hiçbir şey yazma. Örnek: 'mercimek çorbası tarifi ver' → 'mercimek çorbası', 'canım pilav çekti bana pilav tarifi ver' → 'pilav'",
+                ragQuery
+        );
+        String finalSearchQuery = (searchQuery == null || searchQuery.isBlank() || searchQuery.length() > 100)
+                ? ragQuery
+                : searchQuery.trim();
+        List<DocumentMatch> matches = vectorService.findRelevant(finalSearchQuery, 10);
+        List<DocumentMatch> recipeMatches = matches.stream()
+                .filter(m -> "recipe".equals(m.metadata().get("kind")))
+                .filter(m -> m.distance() <= RELEVANCE_THRESHOLD)
+                .limit(5)
+                .toList();
+
+        List<DocumentMatch> finalMatches = recipeMatches.isEmpty()
+                ? matches.stream()
+                .filter(m -> "food".equals(m.metadata().get("kind")))
+                .filter(m -> m.distance() <= RELEVANCE_THRESHOLD)
+                .limit(5)
+                .toList()
+                : recipeMatches;
+
+        String ragContext = buildRagContext(finalMatches);
 
         String userPrompt = """
-                === USER PROFILE ===
+                === KULLANICI PROFİLİ ===
                 %s
                 
                 %s
 
                 %s
                 
-                === CONVERSATION HISTORY ===
+                === KONUŞMA GEÇMİŞİ ===
                 %s
                 
-                === VERITABANINDAN ILGILI TARIFLER ===
+                === VERİTABANINDAN İLGİLİ TARİFLER ===
                 %s
                 
-                === USER QUESTION ===
+                === KULLANICI SORUSU ===
                 %s
                 
                 Yukaridaki baglama gore cevap ver. Cevabi kullanici profiline gore uyarlat.
@@ -456,12 +476,15 @@ public class AssistantChatService {
         );
 
         String answer = openAiService.chat(SYSTEM_PROMPT, userPrompt);
+        String answerForUser = appendSourceLine(stripSourceLine(answer), finalMatches);
 
         conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
-        conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
+        conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, stripSourceLine(answerForUser));
 
-        return response(answer);
+        return response(answerForUser);
     }
+
+    // ── FRIDGE QUERY ────────────────────────────────────────────────
 
     private AssistantChatResponseDto handleFridgeQuery(
             String userEmail, String message, Conversation conversation, String historyBlock) {
@@ -473,7 +496,7 @@ public class AssistantChatService {
         String fridgeContext = userFridgeContextService.buildFridgeContext(userEmail);
 
         String userPrompt = """
-                === USER PROFILE ===
+                === KULLANICI PROFİLİ ===
                 %s
 
                 %s
@@ -482,10 +505,10 @@ public class AssistantChatService {
 
                 %s
 
-                === CONVERSATION HISTORY ===
+                === KONUŞMA GEÇMİŞİ ===
                 %s
 
-                === USER QUESTION ===
+                === KULLANICI SORUSU ===
                 %s
 
                 Cevap verirken birincil kisit olarak buzdolabindaki urunleri kullan.
@@ -510,6 +533,8 @@ public class AssistantChatService {
         return response(answer);
     }
 
+    // ── FRIDGE ADD INTENT ───────────────────────────────────────────
+
     @SuppressWarnings("unchecked")
     private AssistantChatResponseDto handleFridgeAddIntent(
             String userEmail, String message, String intentJson,
@@ -521,7 +546,9 @@ public class AssistantChatService {
             double quantity = ((Number) intentData.getOrDefault("quantity", 100.0)).doubleValue();
             String unitType = (String) intentData.getOrDefault("unit_type", "GRAM");
 
-            List<DocumentMatch> matches = vectorService.findRelevant(foodName, 5);
+            String searchQuery = expandFoodQuery(foodName);
+
+            List<DocumentMatch> matches = vectorService.findRelevant(searchQuery, 5);
             DocumentMatch bestMatch = matches.stream()
                     .filter(m -> m.distance() <= RELEVANCE_THRESHOLD)
                     .filter(m -> "food".equals(m.metadata().get("kind")))
@@ -556,17 +583,42 @@ public class AssistantChatService {
                     "**%s** bulundu. Buzdolabina %s %s ekleyeyim mi? Onaylamak icin 'evet', iptal etmek icin 'hayir' yaz.",
                     foundFoodName,
                     formatCompactNumber(quantity),
-                    "PIECE".equals(normalizeUnitType(unitType))
-                            ? "adet"
-                            : "g"
+                    "PIECE".equals(normalizeUnitType(unitType)) ? "adet" : "g"
             );
 
             conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
             conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
             return response(answer);
+
         } catch (Exception e) {
-            return handleNormalChat(userEmail, message, conversation, historyBlock);
+            List<ConversationMessage> history = conversationMemoryService.getLastMessages(conversation.getId(), HISTORY_LIMIT);
+            return handleNormalChat(userEmail, message, conversation, historyBlock, history);
         }
+    }
+
+    private AssistantChatResponseDto handleMemoryQuery(
+            String userEmail, String message, Conversation conversation, String historyBlock) {
+
+        String userPrompt = """
+                === KONUŞMA GEÇMİŞİ ===
+                %s
+
+                === KULLANICI SORUSU ===
+                %s
+
+                Yalnızca konuşma geçmişinde geçenlere dayan.
+                Geçmişte yoksa açıkça 'Bu konuşmada bunu göremiyorum' de.
+                """.formatted(
+                historyBlock.isBlank() ? "(Önceki konuşma yok)" : historyBlock,
+                message.trim()
+        );
+
+        String answer = openAiService.chat(SYSTEM_PROMPT, userPrompt);
+
+        conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
+        conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
+
+        return response(answer);
     }
 
     // ── HELPERS ─────────────────────────────────────────────────────
@@ -585,6 +637,17 @@ public class AssistantChatService {
         }
     }
 
+
+    private String translateMealType(String mealType) {
+        if (mealType == null) return "";
+        return switch (mealType) {
+            case "BREAKFAST" -> "Kahvaltı";
+            case "LUNCH" -> "Öğle Yemeği";
+            case "DINNER" -> "Akşam Yemeği";
+            case "SNACK" -> "Ara Öğün";
+            default -> mealType;
+        };
+    }
     private double extractCaloriesFromText(String text, double servings) {
         try {
             String[] lines = text.split("\n");
@@ -624,7 +687,7 @@ public class AssistantChatService {
 
             if (dailyMeals.meals() != null) {
                 for (var meal : dailyMeals.meals()) {
-                    sb.append(meal.mealType()).append(":\n");
+                    sb.append(translateMealType(meal.mealType())).append(":\n");
                     if (meal.items() != null) {
                         for (var item : meal.items()) {
                             sb.append("  - ").append(item.sourceName())
@@ -646,24 +709,77 @@ public class AssistantChatService {
         }
 
         StringBuilder sb = new StringBuilder();
+        StringBuilder sourcesSb = new StringBuilder();
         int idx = 1;
+
         for (DocumentMatch match : matches) {
             if (match.distance() > RELEVANCE_THRESHOLD) continue;
-            sb.append("--- Tarif ").append(idx++).append(" ---\n");
+            sb.append("--- Tarif ").append(idx).append(" ---\n");
             sb.append(match.text()).append("\n");
 
-            Object url = match.metadata().get("source_url");
-            if (url != null && !url.toString().isBlank()) {
-                sb.append("URL: ").append(url).append("\n");
+            String kind = match.metadata().get("kind") != null
+                    ? match.metadata().get("kind").toString() : "";
+            String title = match.metadata().get("title") != null
+                    ? match.metadata().get("title").toString() : "";
+            String name = match.metadata().get("name") != null
+                    ? match.metadata().get("name").toString() : "";
+
+            if ("recipe".equals(kind) && !title.isBlank()) {
+                sourcesSb.append("📖 ").append(title).append(" (tarif veritabanı)\n");
+            } else if ("food".equals(kind) && !name.isBlank()) {
+                sourcesSb.append("🥗 ").append(name).append(" (ürün veritabanı)\n");
             }
-            sb.append("\n");
+
+            sb.append("\n\n");
+            idx++;
         }
 
         if (sb.isEmpty()) {
             return "(Veritabaninda ilgili tarif bulunamadi.)";
         }
 
+        if (sourcesSb.length() > 0) {
+            sb.append("--- KULLANILAN KAYNAKLAR ---\n");
+            sb.append(sourcesSb);
+        }
+
         return sb.toString();
+    }
+
+    private String appendSourceLine(String answer, List<DocumentMatch> matches) {
+        String sourceLabel = resolveSourceLabel(matches);
+        if (sourceLabel == null || sourceLabel.isBlank()) {
+            return answer;
+        }
+        return answer + "\n\nKaynak: " + sourceLabel;
+    }
+
+    private String resolveSourceLabel(List<DocumentMatch> matches) {
+        if (matches == null || matches.isEmpty()) {
+            return null;
+        }
+
+        for (DocumentMatch match : matches) {
+            if (match == null || match.distance() > RELEVANCE_THRESHOLD || match.metadata() == null) {
+                continue;
+            }
+
+            String kind = match.metadata().get("kind") != null
+                    ? match.metadata().get("kind").toString() : "";
+            String title = match.metadata().get("title") != null
+                    ? match.metadata().get("title").toString() : "";
+            String name = match.metadata().get("name") != null
+                    ? match.metadata().get("name").toString() : "";
+
+            if ("recipe".equals(kind) && !title.isBlank()) {
+                return "📖 " + title + " (tarif veritabanı)";
+            }
+            if ("food".equals(kind) && !name.isBlank()) {
+                return "🥗 " + name + " (ürün veritabanı)";
+            }
+        }
+
+        return null;
     }
 
     private String formatHistory(List<ConversationMessage> history) {
@@ -679,9 +795,7 @@ public class AssistantChatService {
     }
 
     private String normalizeUnitType(String unitType) {
-        if (unitType == null) {
-            return "GRAM";
-        }
+        if (unitType == null) return "GRAM";
         String normalized = unitType.trim().replace('-', '_').replace(' ', '_').toUpperCase();
         return "PIECE".equals(normalized) ? "PIECE" : "GRAM";
     }
@@ -694,14 +808,100 @@ public class AssistantChatService {
     }
 
     private String normalizeConfirmationInput(String message) {
-        if (message == null) {
-            return "";
-        }
+        if (message == null) return "";
         return message
                 .trim()
                 .toLowerCase(Locale.forLanguageTag("tr"))
                 .replaceAll("[.!?,:;]+", " ")
                 .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private boolean isConversationMemoryQuery(String q) {
+        if (q == null) return false;
+        String s = q.toLowerCase(Locale.forLanguageTag("tr"));
+        return s.contains("az önce")
+                || s.contains("daha önce")
+                || s.contains("ne demiştim")
+                || s.contains("ne demiştin")
+                || s.contains("ne söyledin")
+                || s.contains("hatırlıyor musun")
+                || s.contains("bir önceki mesaj")
+                || s.contains("önceki mesaj")
+                || s.contains("bu konuşmada");
+    }
+
+    private boolean isFollowUpQuery(String q) {
+        if (q == null) return false;
+        String s = q.trim().toLowerCase(Locale.forLanguageTag("tr"));
+        if (s.isBlank()) return false;
+
+        int wc = s.split("\\s+").length;
+        if (wc <= 4) return true;
+
+        return s.startsWith("peki")
+                || s.startsWith("ee")
+                || s.startsWith("tamam")
+                || s.contains("bunun")
+                || s.contains("onun")
+                || s.contains("o tarif")
+                || s.contains("bu tarif")
+                || s.contains("kalorisi")
+                || s.contains("malzemeleri")
+                || s.contains("nasıl yapılır")
+                || s.contains("nasil yapilir");
+    }
+
+    private String buildRagQuery(String userQuery, List<ConversationMessage> history) {
+        if (!isFollowUpQuery(userQuery)) return userQuery;
+        if (history == null || history.isEmpty()) return userQuery;
+
+        String lastUser = "";
+        String lastAssistant = "";
+
+        for (int i = history.size() - 1; i >= 0; i--) {
+            ConversationMessage m = history.get(i);
+            if (m.getRole() == ConversationMessageRole.ASSISTANT && lastAssistant.isBlank()) {
+                String c = m.getContent();
+                lastAssistant = (c != null && c.length() > 200) ? c.substring(0, 200) : (c != null ? c : "");
+            } else if (m.getRole() == ConversationMessageRole.USER && lastUser.isBlank()) {
+                String c = m.getContent();
+                lastUser = (c != null && c.length() > 120) ? c.substring(0, 120) : (c != null ? c : "");
+            }
+            if (!lastUser.isBlank() && !lastAssistant.isBlank()) break;
+        }
+
+        String hint = (lastUser + " " + lastAssistant).trim();
+        if (hint.isBlank()) return userQuery;
+        return hint + " " + userQuery;
+    }
+
+    private String expandFoodQuery(String userTerm) {
+        String expanded = openAiService.chat(
+                """
+                Kullanıcının yazdığı gıda adını, USDA besin veritabanındaki ham/işlenmemiş malzeme adına çevir.
+                Kural: Her zaman en sade, çiğ/taze halini tercih et. Yemek, çorba, sos, hazır ürün adı yazma.
+                Örnekler:
+                - domates → çiğ domates
+                - elma → çiğ elma
+                - tavuk → çiğ tavuk göğsü
+                - yumurta → çiğ yumurta
+                - ekmek → ekmek
+                - makarna → makarna, çiğ
+                Sadece dönüştürülmüş ismi yaz, başka hiçbir şey yazma.
+                """,
+                userTerm
+        );
+        return (expanded == null || expanded.isBlank() || expanded.length() > 80)
+                ? userTerm
+                : expanded.trim();
+    }
+
+    private String stripSourceLine(String answer) {
+        if (answer == null) return "";
+        return answer
+                .replaceAll("(?im)^\\s*Kaynak\\s*:.*$", "")
+                .replaceAll("\\n{3,}", "\n\n")
                 .trim();
     }
 
