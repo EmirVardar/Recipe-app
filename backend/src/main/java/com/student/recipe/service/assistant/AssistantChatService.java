@@ -55,10 +55,18 @@ public class AssistantChatService {
             Kullanıcı bir şey yediğini/içtiğini/tükettiğini söylüyorsa şunu döndür:
             {
               "intent": "LOG_MEAL",
-              "food_name": "<extracted food name>",
+              "food_name": "<sadece yemeğin adı, fiil/miktar/birim içermez, örn: 'kıymalı patates yedim 350 gram' → 'kıymalı patates'>",
               "meal_type": "<BREAKFAST|LUNCH|DINNER|SNACK>",
+              "quantity": <miktar sayısı, belirtilmemişse 100>,
+              "unit": "<GRAM|PIECE|SERVING>",
               "servings": 1.0
             }
+
+            unit kuralları:
+            - gram/g → GRAM
+            - adet/tane/parça → PIECE
+            - porsiyon/tabak/kase → SERVING
+            - belirtilmemişse → GRAM
             
             Kullanıcı kendi beslenme verileri, günlük ilerleme, alınan kalori, kalan kalori,
             bugün ne yediği veya durumunun nasıl olduğu hakkında soruyorsa şunu döndür:
@@ -146,6 +154,10 @@ public class AssistantChatService {
         List<ConversationMessage> history = conversationMemoryService.getLastMessages(conversation.getId(), HISTORY_LIMIT);
         String historyBlock = formatHistory(history);
 
+        if ("AWAIT_CUSTOM_MEAL".equals(conversation.getPendingActionType())) {
+            return handleAwaitCustomMeal(userEmail, message, conversation);
+        }
+
         if (conversation.getPendingActionType() != null) {
             return handlePendingConfirmation(userEmail, message, conversation, historyBlock);
         }
@@ -184,15 +196,38 @@ public class AssistantChatService {
                 normalized.equals("okay") || normalized.equals("sure") ||
                 normalized.equals("add it") || normalized.equals("confirm") ||
                 normalized.equals("evet") || normalized.equals("onayla") ||
-                normalized.equals("ekle") || normalized.equals("tamam") ||
-                normalized.startsWith("evet ") || normalized.startsWith("tamam ") ||
-                normalized.startsWith("onayla ") || normalized.startsWith("ekle ");
+                normalized.equals("ekle") || normalized.equals("tamam") || normalized.equals("tamamdır") ||
+                normalized.equals("olur") || normalized.equals("tabii") || normalized.equals("elbette") ||
+                normalized.startsWith("evet") || normalized.startsWith("tamam") ||
+                normalized.startsWith("onayla") || normalized.startsWith("ekle") || normalized.startsWith("olur");
 
         boolean rejected = normalized.equals("no") || normalized.equals("nope") ||
                 normalized.equals("cancel") || normalized.equals("don't") ||
-                normalized.equals("skip") || normalized.equals("hayir") ||
-                normalized.equals("iptal") || normalized.equals("vazgec") ||
-                normalized.startsWith("hayir ") || normalized.startsWith("iptal ");
+                normalized.equals("skip") || normalized.equals("hayir") || normalized.equals("hayır") ||
+                normalized.equals("iptal") || normalized.equals("vazgec") || normalized.equals("istemiyorum") ||
+                normalized.startsWith("hayır") || normalized.startsWith("hayir") || normalized.startsWith("iptal") || normalized.startsWith("istemiyorum");
+
+        boolean wantsCustom = normalized.equals("değiştir") || normalized.equals("degistir") ||
+                normalized.equals("değiştir") || normalized.startsWith("değiştir") || normalized.startsWith("degistir");
+
+        if (wantsCustom) {
+            try {
+                String data = conversation.getPendingActionData();
+                Map<String, Object> actionData = objectMapper.readValue(data, Map.class);
+                String mealType = (String) actionData.get("mealType");
+                conversationMemoryService.clearPendingAction(conversation);
+                Map<String, Object> awaitData = new java.util.HashMap<>();
+                awaitData.put("mealType", mealType != null ? mealType : "DINNER");
+                conversationMemoryService.setPendingAction(
+                        conversation, "AWAIT_CUSTOM_MEAL", objectMapper.writeValueAsString(awaitData));
+            } catch (Exception ignored) {
+                conversationMemoryService.clearPendingAction(conversation);
+            }
+            String answer = "Peki ne yedin? Yediklerini yazarsan tahmini değerleri hesaplayabilirim.";
+            conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
+            conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
+            return response(answer);
+        }
 
         if (confirmed) {
             String answer = executePendingAction(userEmail, conversation);
@@ -203,6 +238,53 @@ public class AssistantChatService {
         }
 
         if (rejected) {
+            try {
+                String data = conversation.getPendingActionData();
+                Map<String, Object> actionData = objectMapper.readValue(data, Map.class);
+                String sourceType = (String) actionData.get("sourceType");
+                String sourceName = (String) actionData.get("sourceName");
+                String mealType = (String) actionData.get("mealType");
+
+                // DB'den bulunan bir yemek reddedildiyse LLM tahminine geç
+                if (("RECIPE".equals(sourceType) || "FOOD".equals(sourceType)) && sourceName != null && mealType != null) {
+                    conversationMemoryService.clearPendingAction(conversation);
+
+                    String macroJson = openAiService.chat("""
+                            Kullanıcının tarif ettiği yemek için 1 porsiyon (yaklaşık 300g) besin değerlerini JSON olarak ver.
+                            Sadece şu format: {"calories":0,"protein":0,"carbs":0,"fat":0}
+                            Sayılar tam sayı olsun. Başka hiçbir şey yazma.
+                            """, sourceName);
+
+                    double estCalories = 0, estProtein = 0, estCarbs = 0, estFat = 0;
+                    try {
+                        Map<String, Object> macros = objectMapper.readValue(macroJson.trim(), Map.class);
+                        estCalories = ((Number) macros.getOrDefault("calories", 0)).doubleValue();
+                        estProtein  = ((Number) macros.getOrDefault("protein", 0)).doubleValue();
+                        estCarbs    = ((Number) macros.getOrDefault("carbs", 0)).doubleValue();
+                        estFat      = ((Number) macros.getOrDefault("fat", 0)).doubleValue();
+                    } catch (Exception ignored) {}
+
+                    Map<String, Object> newAction = Map.of(
+                            "sourceType", "CUSTOM",
+                            "sourceName", sourceName,
+                            "mealType", mealType,
+                            "calories", estCalories,
+                            "protein", estProtein,
+                            "carbs", estCarbs,
+                            "fat", estFat
+                    );
+                    conversationMemoryService.setPendingAction(
+                            conversation, "LOG_MEAL", objectMapper.writeValueAsString(newAction));
+
+                    String answer = String.format(
+                            "Anladım, tahmini değerleri hesapladım: **%s** için yaklaşık **%.0f kcal**, %.0fg protein, %.0fg karb, %.0fg yağ. %s öğününe ekleyeyim mi?",
+                            sourceName, estCalories, estProtein, estCarbs, estFat, mealType.toLowerCase());
+                    conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
+                    conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
+                    return response(answer);
+                }
+            } catch (Exception ignored) {}
+
             conversationMemoryService.clearPendingAction(conversation);
             String answer = "Tamam, bu islemi yapmayacagim. Baska bir seye ihtiyacin olursa yaz.";
             conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
@@ -263,6 +345,11 @@ public class AssistantChatService {
                 mealTrackingService.addRecipeMealItem(userEmail, new RecipeMealLogItemCreateRequestDto(
                         LocalDate.now(), mealType, recipeId, servings
                 ));
+            } else if ("CUSTOM".equals(sourceType)) {
+                double protein = ((Number) actionData.getOrDefault("protein", 0)).doubleValue();
+                double carbs   = ((Number) actionData.getOrDefault("carbs", 0)).doubleValue();
+                double fat     = ((Number) actionData.getOrDefault("fat", 0)).doubleValue();
+                mealTrackingService.addCustomMealItem(userEmail, sourceName, mealType, calories, protein, carbs, fat);
             } else {
                 Long foodId = ((Number) actionData.get("sourceId")).longValue();
                 double quantity = ((Number) actionData.get("quantity")).doubleValue();
@@ -292,11 +379,13 @@ public class AssistantChatService {
             String foodName = (String) intentData.get("food_name");
             String mealType = (String) intentData.getOrDefault("meal_type", "DINNER");
             double servings = ((Number) intentData.getOrDefault("servings", 1.0)).doubleValue();
+            double quantity = ((Number) intentData.getOrDefault("quantity", 100)).doubleValue();
+            String unit = (String) intentData.getOrDefault("unit", "GRAM");
 
             String mealSearchQuery = expandFoodQuery(foodName);
             List<DocumentMatch> matches = vectorService.findRelevant(mealSearchQuery, 5);
             DocumentMatch bestMatch = matches.stream()
-                    .filter(m -> m.distance() <= RELEVANCE_THRESHOLD)
+                    .filter(m -> m.distance() <= 0.50)
                     .filter(m -> "recipe".equals(m.metadata().get("kind"))
                             || "food".equals(m.metadata().get("kind")))
                     .findFirst()
@@ -323,8 +412,8 @@ public class AssistantChatService {
                             conversation, "LOG_MEAL", objectMapper.writeValueAsString(actionData));
 
                     String answer = String.format(
-                            "**%s** bulundu (%.1f porsiyon icin yaklasik %.0f kcal). Bunu %s ogunune ekleyeyim mi? Onaylamak icin 'evet', iptal etmek icin 'hayir' yaz.",
-                            recipeName, calories, servings, mealType.toLowerCase());
+                            "**%s** bulundu (%.1f porsiyon için yaklaşık %.0f kcal). %s öğününe ekleyeyim mi? Onaylamak için 'evet', farklı bir şey girmek için 'değiştir' yaz veya söyle.",
+                            recipeName, servings, calories, mealType.toLowerCase());
 
                     conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
                     conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
@@ -334,24 +423,28 @@ public class AssistantChatService {
                     Long foodId = Long.parseLong(bestMatch.metadata().get("id").toString());
                     String foundFoodName = bestMatch.metadata().get("name") != null
                             ? bestMatch.metadata().get("name").toString() : foodName;
-                    double calories = bestMatch.metadata().get("calories") != null
+                    double caloriesPer100g = bestMatch.metadata().get("calories") != null
                             ? Double.parseDouble(bestMatch.metadata().get("calories").toString()) : 0.0;
+                    double adjustedCalories = "GRAM".equals(unit)
+                            ? caloriesPer100g * quantity / 100.0
+                            : caloriesPer100g;
 
                     Map<String, Object> actionData = Map.of(
                             "sourceType", "FOOD",
                             "sourceId", foodId,
                             "sourceName", foundFoodName,
                             "mealType", mealType,
-                            "quantity", 100.0,
-                            "unitType", "GRAM",
-                            "calories", calories
+                            "quantity", quantity,
+                            "unitType", unit,
+                            "calories", adjustedCalories
                     );
                     conversationMemoryService.setPendingAction(
                             conversation, "LOG_MEAL", objectMapper.writeValueAsString(actionData));
 
+                    String unitLabel = "GRAM".equals(unit) ? "g" : "PIECE".equals(unit) ? "adet" : "porsiyon";
                     String answer = String.format(
-                            "**%s** bulundu (100 g icin %.0f kcal). Bunu %s ogunune 100 g olarak ekleyeyim mi? Onaylamak icin 'evet', iptal etmek icin 'hayir' yaz.",
-                            foundFoodName, calories, mealType.toLowerCase());
+                            "**%s** bulundu (%.0f %s için %.0f kcal). %s öğününe ekleyeyim mi? Onaylamak için 'evet', farklı bir şey girmek için 'değiştir' yaz veya söyle.",
+                            foundFoodName, quantity, unitLabel, adjustedCalories, mealType.toLowerCase());
 
                     conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
                     conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
@@ -359,8 +452,38 @@ public class AssistantChatService {
                 }
             }
 
+            // DB'de bulunamadı → LLM'den kalori tahmini al
+            String quantityContext = String.format("%.0f %s", quantity, "GRAM".equals(unit) ? "gram" : "PIECE".equals(unit) ? "adet" : "porsiyon");
+            String macroJson = openAiService.chat(String.format("""
+                    Kullanıcının tarif ettiği yemek için %s miktarı besin değerlerini JSON olarak ver.
+                    Sadece şu format: {"calories":0,"protein":0,"carbs":0,"fat":0}
+                    Sayılar tam sayı olsun. Başka hiçbir şey yazma.
+                    """, quantityContext), foodName);
+
+            double estCalories = 0, estProtein = 0, estCarbs = 0, estFat = 0;
+            try {
+                Map<String, Object> macros = objectMapper.readValue(macroJson.trim(), Map.class);
+                estCalories = ((Number) macros.getOrDefault("calories", 0)).doubleValue();
+                estProtein  = ((Number) macros.getOrDefault("protein", 0)).doubleValue();
+                estCarbs    = ((Number) macros.getOrDefault("carbs", 0)).doubleValue();
+                estFat      = ((Number) macros.getOrDefault("fat", 0)).doubleValue();
+            } catch (Exception ignored) {}
+
+            Map<String, Object> actionData = Map.of(
+                    "sourceType", "CUSTOM",
+                    "sourceName", foodName,
+                    "mealType", mealType,
+                    "calories", estCalories,
+                    "protein", estProtein,
+                    "carbs", estCarbs,
+                    "fat", estFat
+            );
+            conversationMemoryService.setPendingAction(
+                    conversation, "LOG_MEAL", objectMapper.writeValueAsString(actionData));
+
             String answer = String.format(
-                    "'%s' veritabanimda bulunamadi. Daha net bir ad yazabilir veya farkli bir isim deneyebilirsin.", foodName);
+                    "**%s** veritabanımda yok ama tahmini değerleri hesapladım: yaklaşık **%.0f kcal**, %.0fg protein, %.0fg karbonhidrat, %.0fg yağ. %s öğününe ekleyeyim mi?",
+                    foodName, estCalories, estProtein, estCarbs, estFat, mealType.toLowerCase());
             conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
             conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
             return response(answer);
@@ -897,6 +1020,63 @@ public class AssistantChatService {
                 : expanded.trim();
     }
 
+    @SuppressWarnings("unchecked")
+    private AssistantChatResponseDto handleAwaitCustomMeal(
+            String userEmail, String message, Conversation conversation) {
+        try {
+            String data = conversation.getPendingActionData();
+            Map<String, Object> awaitData = objectMapper.readValue(data, Map.class);
+            String mealType = (String) awaitData.getOrDefault("mealType", "DINNER");
+
+            conversationMemoryService.clearPendingAction(conversation);
+
+            String extracted = openAiService.chat(
+                    "Kullanıcının mesajından sadece yemeğin adını çıkar. Fiil, miktar, birim, zaman ifadesi içermemeli. Sadece yemek adını yaz, başka hiçbir şey yazma.",
+                    message.trim());
+            String foodName = (extracted != null && !extracted.isBlank() && extracted.length() < 100)
+                    ? extracted.trim() : message.trim();
+            String macroJson = openAiService.chat("""
+                    Kullanıcının tarif ettiği yemek için 1 porsiyon (yaklaşık 300g) besin değerlerini JSON olarak ver.
+                    Sadece şu format: {"calories":0,"protein":0,"carbs":0,"fat":0}
+                    Sayılar tam sayı olsun. Başka hiçbir şey yazma.
+                    """, foodName);
+
+            double estCalories = 0, estProtein = 0, estCarbs = 0, estFat = 0;
+            try {
+                Map<String, Object> macros = objectMapper.readValue(macroJson.trim(), Map.class);
+                estCalories = ((Number) macros.getOrDefault("calories", 0)).doubleValue();
+                estProtein  = ((Number) macros.getOrDefault("protein", 0)).doubleValue();
+                estCarbs    = ((Number) macros.getOrDefault("carbs", 0)).doubleValue();
+                estFat      = ((Number) macros.getOrDefault("fat", 0)).doubleValue();
+            } catch (Exception ignored) {}
+
+            Map<String, Object> actionData = Map.of(
+                    "sourceType", "CUSTOM",
+                    "sourceName", foodName,
+                    "mealType", mealType,
+                    "calories", estCalories,
+                    "protein", estProtein,
+                    "carbs", estCarbs,
+                    "fat", estFat
+            );
+            conversationMemoryService.setPendingAction(
+                    conversation, "LOG_MEAL", objectMapper.writeValueAsString(actionData));
+
+            String answer = String.format(
+                    "**%s** için tahmini: **%.0f kcal**, %.0fg protein, %.0fg karb, %.0fg yağ. %s öğününe ekleyeyim mi? Onaylamak için 'evet', iptal için 'hayır' yaz veya söyle.",
+                    foodName, estCalories, estProtein, estCarbs, estFat, mealType.toLowerCase());
+
+            conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
+            conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
+            return response(answer);
+
+        } catch (Exception e) {
+            conversationMemoryService.clearPendingAction(conversation);
+            String answer = "Bir hata oluştu, tekrar dener misin?";
+            return response(answer);
+        }
+    }
+
     private String stripSourceLine(String answer) {
         if (answer == null) return "";
         return answer
@@ -907,5 +1087,9 @@ public class AssistantChatService {
 
     private AssistantChatResponseDto response(String answer) {
         return new AssistantChatResponseDto(answer);
+    }
+
+    private AssistantChatResponseDto response(String answer, List<String> quickReplies) {
+        return new AssistantChatResponseDto(answer, quickReplies);
     }
 }

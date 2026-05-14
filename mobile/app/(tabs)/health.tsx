@@ -689,6 +689,8 @@ export default function ShoppingListTabScreen() {
                             <Text style={styles.mealItemMeta}>
                               {item.sourceType === 'RECIPE'
                                 ? `${formatNumber(item.quantity)} porsiyon • ${formatNumber(item.calories, ' kcal')}`
+                                : item.sourceType === 'CUSTOM'
+                                ? `Tahmini • ${formatNumber(item.calories, ' kcal')}`
                                 : `${formatNumber(item.quantity)} ${getUnitLabel(item.unitType).toLowerCase()} • ${formatNumber(
                                     item.gramEquivalent,
                                     ' g'
@@ -704,23 +706,25 @@ export default function ShoppingListTabScreen() {
                           </Pressable>
                         </View>
 
-                        <View style={styles.adjustRow}>
-                          <Pressable
-                            style={styles.adjustButton}
-                            onPress={() => void handleUpdateItem(meal.mealType, item, 'decrease')}
-                            disabled={submittingItemId === item.id}>
-                            <Text style={styles.adjustButtonText}>-</Text>
-                          </Pressable>
+                        {item.sourceType !== 'CUSTOM' && (
+                          <View style={styles.adjustRow}>
+                            <Pressable
+                              style={styles.adjustButton}
+                              onPress={() => void handleUpdateItem(meal.mealType, item, 'decrease')}
+                              disabled={submittingItemId === item.id}>
+                              <Text style={styles.adjustButtonText}>-</Text>
+                            </Pressable>
 
-                          <Text style={styles.adjustLabel}>{getMealItemAdjustLabel(item)}</Text>
+                            <Text style={styles.adjustLabel}>{getMealItemAdjustLabel(item)}</Text>
 
-                          <Pressable
-                            style={styles.adjustButton}
-                            onPress={() => void handleUpdateItem(meal.mealType, item, 'increase')}
-                            disabled={submittingItemId === item.id}>
-                            <Text style={styles.adjustButtonText}>+</Text>
-                          </Pressable>
-                        </View>
+                            <Pressable
+                              style={styles.adjustButton}
+                              onPress={() => void handleUpdateItem(meal.mealType, item, 'increase')}
+                              disabled={submittingItemId === item.id}>
+                              <Text style={styles.adjustButtonText}>+</Text>
+                            </Pressable>
+                          </View>
+                        )}
                       </View>
                     ))}
                   </View>

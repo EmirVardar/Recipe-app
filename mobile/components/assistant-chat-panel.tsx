@@ -4,6 +4,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Animated,
@@ -19,7 +20,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { chatWithAssistant, chatWithAssistantVoice, recognizeFood } from '@/lib/api';
+import { chatWithAssistant, chatWithAssistantVoice, detectIngredients, recognizeFood } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 type ChatMessage = {
@@ -28,6 +29,7 @@ type ChatMessage = {
   text: string;
   transcript?: string;
   mode?: 'text' | 'voice';
+  quickReplies?: string[];
 };
 
 type AssistantMode = 'chat' | 'voice';
@@ -313,42 +315,40 @@ export function AssistantChatPanel({
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
   };
 
-  const handleImagePick = async () => {
+  const pickImage = async (): Promise<string | null> => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+      allowsEditing: false,
+    });
+    if (result.canceled || !result.assets || !result.assets[0]) return null;
+    return result.assets[0].uri;
+  };
+
+  const handleFoodRecognition = async () => {
     if (loading) return;
-
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        quality: 0.8,
-        allowsEditing: false,
-      });
+      const imageUri = await pickImage();
+      if (!imageUri) return;
 
-      if (result.canceled || !result.assets || !result.assets[0]) return;
-
-      const imageUri = result.assets[0].uri;
       setLoading(true);
       setErrorMessage('');
 
       const { food_name, confidence } = await recognizeFood(imageUri);
       const readableName = food_name.replace(/_/g, ' ');
-      const message = `${readableName} tarifi ver`;
 
       setMessages((current) => [
         ...current,
         {
           id: `user-${Date.now()}`,
           role: 'user',
-          text: `📷 Fotoğraf yüklendi — ${readableName} (${Math.round(confidence * 100)}% emin)`,
+          text: `📷 ${readableName} (${Math.round(confidence * 100)}% emin)`,
           mode: 'text',
         },
       ]);
 
-      if (!accessToken || !isLoggedIn) {
-        setErrorMessage('Tarif almak için giriş yapman gerekiyor.');
-        return;
-      }
-
-      const response = await chatWithAssistant(accessToken, message);
+      if (!accessToken || !isLoggedIn) return;
+      const response = await chatWithAssistant(accessToken, `${readableName} tarifi ver`);
       pushAssistantMessage(buildAssistantText(response.answer), { mode: 'text' });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -358,6 +358,63 @@ export function AssistantChatPanel({
       setLoading(false);
       scrollToBottom();
     }
+  };
+
+  const handleIngredientScan = async () => {
+    if (loading) return;
+    try {
+      const imageUri = await pickImage();
+      if (!imageUri) return;
+
+      setLoading(true);
+      setErrorMessage('');
+
+      const { ingredients } = await detectIngredients(imageUri);
+      if (!ingredients || ingredients.length === 0) {
+        setErrorMessage('Hiç malzeme tespit edilemedi.');
+        return;
+      }
+
+      const ingredientList = ingredients
+        .map((i) => `${i.name.replace(/_/g, ' ')} (%${Math.round(i.confidence * 100)})`)
+        .join(', ');
+
+      setMessages((current) => [
+        ...current,
+        {
+          id: `user-${Date.now()}`,
+          role: 'user',
+          text: `📷 Tespit edilenler: ${ingredientList}`,
+          mode: 'text',
+        },
+      ]);
+
+      if (!accessToken || !isLoggedIn) return;
+      const names = ingredients.map((i) => i.name.replace(/_/g, ' ')).join(', ');
+      const response = await chatWithAssistant(accessToken, `Elimde şu malzemeler var: ${names}. Bunlarla yapabileceğim bir tarif öner.`);
+      pushAssistantMessage(buildAssistantText(response.answer), { mode: 'text' });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      Alert.alert('Hata', msg);
+      setErrorMessage(msg);
+    } finally {
+      setLoading(false);
+      scrollToBottom();
+    }
+  };
+
+  const handleImagePick = () => {
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        options: ['İptal', 'Malzeme Tara', 'Yemek Tanı'],
+        cancelButtonIndex: 0,
+        title: 'Ne yapmak istiyorsun?',
+      },
+      (buttonIndex) => {
+        if (buttonIndex === 1) void handleIngredientScan();
+        if (buttonIndex === 2) void handleFoodRecognition();
+      }
+    );
   };
 
   const handleSend = async (suggestedMessage?: string) => {
@@ -381,7 +438,10 @@ export function AssistantChatPanel({
 
     try {
       const response = await chatWithAssistant(accessToken, buildMessage ? buildMessage(rawInput) : rawInput);
-      pushAssistantMessage(buildAssistantText(response.answer), { mode: 'text' });
+      pushAssistantMessage(buildAssistantText(response.answer), {
+        mode: 'text',
+        quickReplies: response.quickReplies ?? undefined,
+      });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Mesaj gönderilemedi.');
     } finally {
@@ -470,6 +530,7 @@ export function AssistantChatPanel({
           role: 'assistant',
           text: assistantText || 'Şu anda net bir yanıt üretemedim.',
           mode: 'voice',
+          quickReplies: response.quickReplies ?? undefined,
         },
       ]);
 
@@ -966,6 +1027,25 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 20,
     paddingBottom: 12,
+  },
+  quickReplyRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  quickReplyButton: {
+    backgroundColor: '#F2F2F7',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#D1D1D6',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  quickReplyText: {
+    color: '#111111',
+    fontSize: 13,
+    fontWeight: '600',
   },
   quickChip: {
     flex: 1,

@@ -4,6 +4,7 @@ import torch.nn as nn
 from torchvision import transforms, models
 from fastapi import FastAPI, File, UploadFile
 from PIL import Image
+from ultralytics import YOLO
 
 app = FastAPI()
 
@@ -41,6 +42,31 @@ async def predict(file: UploadFile = File(...)):
         "food_name": IDX_TO_CLASS[idx.item()],
         "confidence": round(confidence.item(), 3)
     }
+
+yolo_model = YOLO("best.pt")
+
+@app.post("/detect-ingredients")
+async def detect_ingredients(file: UploadFile = File(...)):
+    contents = await file.read()
+    image = Image.open(io.BytesIO(contents)).convert("RGB")
+
+    results = yolo_model(image, verbose=False)
+
+    detected = {}
+    for result in results:
+        for box in result.boxes:
+            cls_id = int(box.cls.item())
+            conf = round(box.conf.item(), 3)
+            name = yolo_model.names[cls_id]
+            if name not in detected or conf > detected[name]:
+                detected[name] = conf
+
+    ingredients = [
+        {"name": name, "confidence": conf}
+        for name, conf in sorted(detected.items(), key=lambda x: -x[1])
+    ]
+
+    return {"ingredients": ingredients}
 
 @app.get("/health")
 def health():

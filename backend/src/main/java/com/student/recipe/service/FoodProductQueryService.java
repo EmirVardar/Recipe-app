@@ -88,34 +88,36 @@ public class FoodProductQueryService {
                         OR name % ?
                         OR COALESCE(name_tr, '') % ?
                 ) results
-                ORDER BY 
-                    -- 1. Turkce tam eslesmeyi one al
-                    (CASE 
+                ORDER BY
+                    -- 1. Tam eslesme, 2. ile basliyor, 3. kelime siniri, 4. on-ek
+                    (CASE
                         WHEN results.name_tr ILIKE ? THEN 1
-                        WHEN results.name_tr ILIKE (? || '%') THEN 2
                         WHEN results.name ILIKE ? THEN 1
-                        WHEN results.name ILIKE (? || ',%') THEN 3
+                        WHEN results.name_tr ILIKE (? || '%') THEN 2
+                        WHEN results.name_tr ~* ('(^| )' || ? || '( |$)') THEN 3
+                        WHEN results.name ILIKE (? || ',%') THEN 4
                         WHEN results.name ILIKE (? || '%') THEN 4
                         ELSE 5
                     END) ASC,
-                    (results.word_rank * 2 + results.sim_score + results.basic_priority + results.noise_penalty) DESC,
-                    LENGTH(results.display_name) ASC
+                    LENGTH(results.display_name) ASC,
+                    (results.word_rank * 2 + results.sim_score + results.basic_priority + results.noise_penalty) DESC
                 LIMIT ?
                 """,
                 foodProductRowMapper(),
-                tsQuery,
-                tsQuery,
-                normalizedQuery,
-                normalizedQuery,
-                tsQuery,
-                tsQuery,
-                normalizedQuery,
-                normalizedQuery,
-                normalizedQuery,
-                normalizedQuery,
-                normalizedQuery,
-                normalizedQuery,
-                normalizedQuery,
+                tsQuery,       // SELECT: FTS English
+                tsQuery,       // SELECT: FTS Turkish
+                normalizedQuery, // SELECT: trigram English
+                normalizedQuery, // SELECT: trigram Turkish
+                tsQuery,       // WHERE: FTS English
+                tsQuery,       // WHERE: FTS Turkish
+                normalizedQuery, // WHERE: trigram English
+                normalizedQuery, // WHERE: trigram Turkish
+                normalizedQuery, // ORDER: name_tr exact
+                normalizedQuery, // ORDER: name exact
+                normalizedQuery, // ORDER: name_tr starts with
+                normalizedQuery, // ORDER: word boundary
+                normalizedQuery, // ORDER: name comma
+                normalizedQuery, // ORDER: name starts with
                 safeLimit
         );
     }

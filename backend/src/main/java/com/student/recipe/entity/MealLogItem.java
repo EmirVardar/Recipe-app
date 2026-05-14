@@ -43,6 +43,9 @@ public class MealLogItem {
     @JoinColumn(name = "recipe_id", nullable = true)
     private Recipe recipe;
 
+    @Column(nullable = true, length = 255)
+    private String customName;
+
     @Column(nullable = false)
     private Double quantity;
 

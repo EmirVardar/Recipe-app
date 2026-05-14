@@ -150,12 +150,14 @@ export type RecipeDetailResponse = {
 
 export type AssistantChatResponse = {
   answer: string;
+  quickReplies?: string[];
 };
 
 export type AssistantVoiceResponse = {
   transcribedText: string;
   answer: string;
   audio: string;
+  quickReplies?: string[];
 };
 
 // YENİ
@@ -297,14 +299,14 @@ export function getApiBaseUrl(): string {
     return 'http://10.0.2.2:8080';
   }
 
-  return 'http://172.16.1.42:8080';
+  return 'http://10.7.86.192:8080';
 }
 
 export function getMlServiceUrl(): string {
   if (Platform.OS === 'android') {
     return 'http://10.0.2.2:8001';
   }
-  return 'http://172.16.1.42:8001';
+  return 'http://10.7.86.192:8001';
 }
 
 export type FoodRecognitionResponse = {
@@ -330,6 +332,30 @@ export async function recognizeFood(imageUri: string): Promise<FoodRecognitionRe
   }
 
   return response.json() as Promise<FoodRecognitionResponse>;
+}
+
+export type IngredientDetectionResponse = {
+  ingredients: { name: string; confidence: number }[];
+};
+
+export async function detectIngredients(imageUri: string): Promise<IngredientDetectionResponse> {
+  const formData = new FormData();
+  formData.append('file', {
+    uri: imageUri,
+    name: 'photo.jpg',
+    type: 'image/jpeg',
+  } as unknown as Blob);
+
+  const response = await fetch(`${getMlServiceUrl()}/detect-ingredients`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error('Malzeme tespiti başarısız oldu.');
+  }
+
+  return response.json() as Promise<IngredientDetectionResponse>;
 }
 
 export async function register(payload: RegisterRequest): Promise<AuthResponse> {

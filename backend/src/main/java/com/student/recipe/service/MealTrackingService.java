@@ -182,6 +182,10 @@ public class MealTrackingService {
             sourceId = item.getFoodProduct().getId();
             sourceName = resolveFoodName(item.getFoodProduct());
             sourceType = "FOOD";
+        } else if (item.getCustomName() != null) {
+            sourceId = null;
+            sourceName = item.getCustomName();
+            sourceType = "CUSTOM";
         } else {
             sourceId = null;
             sourceName = null;
@@ -386,6 +390,30 @@ public class MealTrackingService {
 
     private double orZero(Double value) {
         return value != null ? value : 0.0;
+    }
+
+    @Transactional
+    public void addCustomMealItem(String email, String customName, String mealType,
+                                  double calories, double protein, double carbs, double fat) {
+        User user = getUserByEmail(email);
+        MealType type = parseMealType(mealType);
+        LocalDate today = LocalDate.now();
+
+        MealLog mealLog = mealLogRepository.findByUserIdAndLogDateAndMealType(user.getId(), today, type)
+                .orElseGet(() -> createMealLog(user, today, type));
+
+        MealLogItem item = new MealLogItem();
+        item.setMealLog(mealLog);
+        item.setCustomName(customName);
+        item.setQuantity(1.0);
+        item.setUnitType(MealUnitType.GRAM);
+        item.setGramEquivalent(100.0);
+        item.setCalories(calories);
+        item.setProtein(protein);
+        item.setCarbs(carbs);
+        item.setFat(fat);
+
+        mealLogItemRepository.save(item);
     }
 
     private void validateRecipeRequest(RecipeMealLogItemCreateRequestDto request) {

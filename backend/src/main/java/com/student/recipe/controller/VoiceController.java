@@ -49,10 +49,13 @@ public class VoiceController {
         byte[] audioBytes = audioService.synthesize(chatResponse.answer());
         String base64Audio = Base64.getEncoder().encodeToString(audioBytes);
 
-        return ResponseEntity.ok(Map.of(
-                "transcribedText", userText,
-                "answer", chatResponse.answer(),
-                "audio", base64Audio
-        ));
+        Map<String, Object> responseBody = new java.util.HashMap<>();
+        responseBody.put("transcribedText", userText);
+        responseBody.put("answer", chatResponse.answer());
+        responseBody.put("audio", base64Audio);
+        if (chatResponse.quickReplies() != null) {
+            responseBody.put("quickReplies", chatResponse.quickReplies());
+        }
+        return ResponseEntity.ok(responseBody);
     }
 }

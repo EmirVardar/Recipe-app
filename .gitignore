@@ -8,3 +8,4 @@ mobile/.expo/
 .env.local
 *.csv
 ml-service/*.pth
+ml-service/*.pt
