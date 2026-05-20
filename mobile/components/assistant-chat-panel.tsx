@@ -22,6 +22,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { chatWithAssistant, chatWithAssistantVoice, detectIngredients, recognizeFood } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import NativeAudio from 'native-audio';
+
+console.log('[NativeAudio] module loaded:', NativeAudio);
 
 type ChatMessage = {
   id: string;
@@ -48,6 +51,7 @@ type AssistantChatPanelProps = {
 };
 
 const BARS = 34;
+const FRAME_MS = 70;
 const MIN_SCALE = 0.12;
 const MAX_GAIN = 2.05;
 
@@ -180,7 +184,8 @@ export function AssistantChatPanel({
   const travelT = useRef(new Animated.Value(0)).current;
   const mouthAmount = useRef(new Animated.Value(0)).current;
   const travelLoopRef = useRef<Animated.CompositeAnimation | null>(null);
-  const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const isPressedRef = useRef(false);
+  const nativeAudioSubRef = useRef<ReturnType<typeof NativeAudio.addListener> | null>(null);
   const gains = useRef(makeGains(BARS)).current;
 
   useEffect(() => {
@@ -196,9 +201,9 @@ export function AssistantChatPanel({
 
   useEffect(() => {
     return () => {
-      if (soundRef.current) {
-        void soundRef.current.unloadAsync();
-      }
+      void soundRef.current?.unloadAsync();
+      nativeAudioSubRef.current?.remove();
+      try { NativeAudio.stop(); } catch {}
     };
   }, []);
 
@@ -230,65 +235,18 @@ export function AssistantChatPanel({
     };
   }, [travelT, voicePhase]);
 
+  // Gerçek mikrofon seviyelerini NativeAudio'dan alıp animasyona yansıt
   useEffect(() => {
-    const shouldPulse = voicePhase === 'listening' || voicePhase === 'speaking';
-
-    if (shouldPulse) {
-      if (!pulseLoopRef.current) {
-        pulseLoopRef.current = Animated.loop(
-          Animated.parallel([
-            Animated.sequence([
-              Animated.timing(levelAnim, {
-                toValue: 0.82,
-                duration: 360,
-                easing: Easing.inOut(Easing.quad),
-                useNativeDriver: true,
-              }),
-              Animated.timing(levelAnim, {
-                toValue: 0.28,
-                duration: 420,
-                easing: Easing.inOut(Easing.quad),
-                useNativeDriver: true,
-              }),
-            ]),
-            Animated.sequence([
-              Animated.timing(glowAnim, {
-                toValue: 0.9,
-                duration: 360,
-                easing: Easing.inOut(Easing.quad),
-                useNativeDriver: true,
-              }),
-              Animated.timing(glowAnim, {
-                toValue: 0.25,
-                duration: 420,
-                easing: Easing.inOut(Easing.quad),
-                useNativeDriver: true,
-              }),
-            ]),
-          ])
-        );
-        pulseLoopRef.current.start();
-      }
-    } else {
-      pulseLoopRef.current?.stop();
-      pulseLoopRef.current = null;
-
-      Animated.parallel([
-        Animated.timing(levelAnim, {
-          toValue: 0,
-          duration: 180,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(glowAnim, {
-          toValue: 0,
-          duration: 180,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [glowAnim, levelAnim, voicePhase]);
+    nativeAudioSubRef.current = NativeAudio.addListener('onLevel', (p) => {
+      if (!isPressedRef.current) return;
+      animateLevel(clamp01(p.level));
+    });
+    return () => {
+      nativeAudioSubRef.current?.remove();
+      nativeAudioSubRef.current = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     Animated.timing(mouthAmount, {
@@ -298,6 +256,26 @@ export function AssistantChatPanel({
       useNativeDriver: true,
     }).start();
   }, [mouthAmount, voicePhase]);
+
+  const animateLevel = (lvl: number) => {
+    Animated.timing(levelAnim, {
+      toValue: lvl,
+      duration: FRAME_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+    Animated.timing(glowAnim, {
+      toValue: Math.min(1, lvl * 1.05),
+      duration: FRAME_MS,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const resetWave = () => {
+    levelAnim.setValue(0);
+    glowAnim.setValue(0);
+  };
 
   const pushAssistantMessage = (text: string, extra?: Partial<ChatMessage>) => {
     setMessages((current) => [
@@ -457,11 +435,20 @@ export function AssistantChatPanel({
     }
 
     try {
-      const permission = await Audio.requestPermissionsAsync();
-      if (!permission.granted) {
+      isPressedRef.current = true;
+      setVoicePhase('listening');
+      setErrorMessage('');
+
+      const granted = await NativeAudio.requestPermission();
+      if (!granted) {
         setErrorMessage('Mikrofon izni verilmedi.');
+        isPressedRef.current = false;
+        setVoicePhase('idle');
         return;
       }
+
+      NativeAudio.configure(FRAME_MS);
+      await NativeAudio.start();
 
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
@@ -474,11 +461,11 @@ export function AssistantChatPanel({
 
       setRecording(nextRecording);
       setIsRecording(true);
-      setVoicePhase('listening');
-      setErrorMessage('');
     } catch (error) {
+      isPressedRef.current = false;
       setRecordingSupported(false);
       setVoicePhase('idle');
+      resetWave();
       setErrorMessage(error instanceof Error ? error.message : 'Ses kaydı başlatılamadı.');
     }
   };
@@ -492,9 +479,12 @@ export function AssistantChatPanel({
     setLoading(true);
     setErrorMessage('');
     setIsRecording(false);
+    isPressedRef.current = false;
     setVoicePhase('thinking');
+    resetWave();
 
     try {
+      NativeAudio.stop();
       await recording.stopAndUnloadAsync();
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
@@ -540,15 +530,27 @@ export function AssistantChatPanel({
           await soundRef.current.unloadAsync();
         }
 
+        let waveformLevels: number[] = [];
+        try {
+          waveformLevels = await NativeAudio.analyzeFile(audioUri, FRAME_MS);
+        } catch {}
+
         const { sound } = await Audio.Sound.createAsync({ uri: audioUri });
         soundRef.current = sound;
         setVoicePhase('speaking');
+
+        await sound.setProgressUpdateIntervalAsync(FRAME_MS);
         sound.setOnPlaybackStatusUpdate((status) => {
-          if (!status.isLoaded) {
-            return;
+          if (!status.isLoaded) return;
+
+          if (waveformLevels.length > 0) {
+            const pos = typeof (status as any).positionMillis === 'number' ? (status as any).positionMillis : 0;
+            const idx = Math.min(waveformLevels.length - 1, Math.floor(pos / FRAME_MS));
+            animateLevel(clamp01(waveformLevels[idx]));
           }
 
-          if (status.didJustFinish) {
+          if ((status as any).didJustFinish) {
+            resetWave();
             void sound.unloadAsync();
             soundRef.current = null;
             setVoicePhase('idle');
@@ -559,6 +561,7 @@ export function AssistantChatPanel({
         setVoicePhase('idle');
       }
     } catch (error) {
+      resetWave();
       setVoicePhase('idle');
       setErrorMessage(error instanceof Error ? error.message : 'Sesli mesaj gönderilemedi.');
     } finally {

@@ -83,11 +83,16 @@ public class AssistantChatService {
             Kullanıcı buzdolabına bir şey eklemek istiyorsa şunu döndür:
             {
               "intent": "FRIDGE_ADD_ITEM",
-              "food_name": "<extracted food name>",
-              "quantity": 1.0,
+              "food_name": "<sadece ürünün adı, fiil/miktar/birim içermez, örn: '10 tane yumurta ekle' → 'yumurta'>",
+              "quantity": <kullanıcının belirttiği miktar sayısı, belirtilmemişse 1>,
               "unit_type": "<GRAM|PIECE>"
             }
-            
+
+            unit_type kuralları:
+            - gram/g → GRAM
+            - adet/tane/parça → PIECE
+            - belirtilmemişse → PIECE
+
             Diğer her şey için (tarif önerileri, yemek soruları, genel beslenme tavsiyesi) şunu döndür:
             {
               "intent": "OTHER"

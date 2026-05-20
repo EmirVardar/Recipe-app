@@ -224,7 +224,7 @@ export type MealLogItemResponse = {
   foodName: string | null;
   sourceId: number | null;
   sourceName: string | null;
-  sourceType: 'FOOD' | 'RECIPE' | 'UNKNOWN';
+  sourceType: 'FOOD' | 'RECIPE' | 'CUSTOM' | 'UNKNOWN';
   quantity: number;
   unitType: string;
   gramEquivalent: number;
@@ -299,14 +299,14 @@ export function getApiBaseUrl(): string {
     return 'http://10.0.2.2:8080';
   }
 
-  return 'http://10.7.86.192:8080';
+  return 'http://172.16.1.93:8080';
 }
 
 export function getMlServiceUrl(): string {
   if (Platform.OS === 'android') {
     return 'http://10.0.2.2:8001';
   }
-  return 'http://10.7.86.192:8001';
+  return 'http://172.16.1.93:8001';
 }
 
 export type FoodRecognitionResponse = {

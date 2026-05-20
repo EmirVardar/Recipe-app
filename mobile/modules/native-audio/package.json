@@ -1,0 +1,8 @@
+{
+  "name": "native-audio",
+  "version": "1.0.0",
+  "description": "Native audio level metering for iOS",
+  "main": "index.ts",
+  "license": "MIT",
+  "author": "Emir Vardar"
+}
