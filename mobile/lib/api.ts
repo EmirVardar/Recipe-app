@@ -299,14 +299,14 @@ export function getApiBaseUrl(): string {
     return 'http://10.0.2.2:8080';
   }
 
-  return 'http://172.16.1.93:8080';
+  return 'http://172.16.1.34:8080';
 }
 
 export function getMlServiceUrl(): string {
   if (Platform.OS === 'android') {
     return 'http://10.0.2.2:8001';
   }
-  return 'http://172.16.1.93:8001';
+  return 'http://172.16.1.34:8001';
 }
 
 export type FoodRecognitionResponse = {

@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 
 import { RecipeAccessBanner } from '@/components/recipe-access-banner';
 import { getRecipeDetail, type RecipeDetailResponse } from '@/lib/api';
@@ -38,6 +37,124 @@ function formatCategoryLabel(category: string | null | undefined) {
     default:
       return 'Ana Yemek';
   }
+}
+
+const UNIT_TRANSLATIONS: Record<string, string> = {
+  small: 'küçük',
+  medium: 'orta',
+  large: 'büyük',
+  xlarge: 'çok büyük',
+  whole: 'bütün',
+  halves: 'yarım',
+  half: 'yarım',
+  quarter: 'çeyrek',
+  quarters: 'çeyrek',
+  g: 'g',
+  gram: 'g',
+  grams: 'g',
+  gr: 'g',
+  kg: 'kg',
+  kilogram: 'kg',
+  kilograms: 'kg',
+  ml: 'ml',
+  l: 'l',
+  lt: 'l',
+  liter: 'l',
+  liters: 'l',
+  cup: 'su bardağı',
+  cups: 'su bardağı',
+  serving: 'porsiyon',
+  servings: 'porsiyon',
+  tbsp: 'yemek kaşığı',
+  tablespoon: 'yemek kaşığı',
+  tablespoons: 'yemek kaşığı',
+  tsp: 'çay kaşığı',
+  teaspoon: 'çay kaşığı',
+  teaspoons: 'çay kaşığı',
+  dessertspoon: 'tatlı kaşığı',
+  dessertspoons: 'tatlı kaşığı',
+  handful: 'avuç',
+  handfuls: 'avuç',
+  clove: 'diş',
+  cloves: 'diş',
+  piece: 'adet',
+  pieces: 'adet',
+  pc: 'adet',
+  pcs: 'adet',
+  unit: 'adet',
+  units: 'adet',
+  slice: 'dilim',
+  slices: 'dilim',
+  strip: 'şerit',
+  strips: 'şerit',
+  stalk: 'sap',
+  stalks: 'sap',
+  stick: 'çubuk',
+  sticks: 'çubuk',
+  cube: 'küp',
+  cubes: 'küp',
+  leaf: 'yaprak',
+  leaves: 'yaprak',
+  pinch: 'tutam',
+  pinches: 'tutam',
+  dash: 'çimdik',
+  dashes: 'çimdik',
+  oz: 'ons',
+  ounce: 'ons',
+  ounces: 'ons',
+  lb: 'lb',
+  pound: 'pound',
+  pounds: 'pound',
+  can: 'konserve',
+  cans: 'konserve',
+  jar: 'kavanoz',
+  jars: 'kavanoz',
+  bottle: 'şişe',
+  bottles: 'şişe',
+  bag: 'paket',
+  bags: 'paket',
+  package: 'paket',
+  packages: 'paket',
+  packet: 'paket',
+  packets: 'paket',
+  bunch: 'demet',
+  bunches: 'demet',
+  loaf: 'somun',
+  loaves: 'somun',
+  sprig: 'dal',
+  sprigs: 'dal',
+  head: 'adet',
+  heads: 'adet',
+  ear: 'koçan',
+  ears: 'koçan',
+};
+
+function translateUnit(unit: string | null | undefined) {
+  const normalized = unit?.trim().toLowerCase();
+  if (!normalized) {
+    return '';
+  }
+
+  return UNIT_TRANSLATIONS[normalized] ?? unit!.trim();
+}
+
+function formatIngredientLine(ingredient: RecipeDetailResponse['ingredients'][number]) {
+  const hasAmount = ingredient.amount != null;
+  const unit = translateUnit(ingredient.unit);
+
+  if (!hasAmount) {
+    return ingredient.name;
+  }
+
+  const amountText = Number.isInteger(ingredient.amount)
+    ? String(ingredient.amount)
+    : ingredient.amount.toFixed(1);
+
+  if (unit) {
+    return `${amountText} ${unit} ${ingredient.name}`;
+  }
+
+  return `${amountText} ${ingredient.name}`;
 }
 
 export default function RecipeDetailScreen() {
@@ -116,22 +233,6 @@ export default function RecipeDetailScreen() {
                 </View>
               </View>
 
-              {recipe.summary ? <Text style={styles.summary}>{recipe.summary}</Text> : null}
-
-              <Pressable
-                style={styles.aiButton}
-                onPress={() =>
-                  router.push({
-                    pathname: '/assistant-chat',
-                    params: {
-                      recipeId: String(recipe.id),
-                      recipeTitle: recipe.title,
-                    },
-                  })
-                }>
-                <Ionicons name="sparkles-outline" size={15} color="#FFFFFF" />
-                <Text style={styles.aiButtonText}>AI'a Sor</Text>
-              </Pressable>
             </View>
 
             <View style={styles.metricsSection}>
@@ -162,7 +263,7 @@ export default function RecipeDetailScreen() {
               {recipe.ingredients.map((ingredient, index) => (
                 <View key={`${recipe.id}-${ingredient.ingredientId}-${index}`} style={styles.listRow}>
                   <View style={styles.listBullet} />
-                  <Text style={styles.sectionItem}>{ingredient.name}</Text>
+                  <Text style={styles.sectionItem}>{formatIngredientLine(ingredient)}</Text>
                 </View>
               ))}
             </View>
@@ -289,26 +390,6 @@ const styles = StyleSheet.create({
   quickMetaDot: {
     color: '#C7C7CC',
     fontSize: 13,
-  },
-  summary: {
-    color: '#6E6E73',
-    fontSize: 15,
-    lineHeight: 23,
-  },
-  aiButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 7,
-    backgroundColor: '#1C1C1E',
-    borderRadius: 999,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-  },
-  aiButtonText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
   },
   metricsSection: {
     backgroundColor: '#FFFFFF',

@@ -21,6 +21,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { chatWithAssistant, chatWithAssistantVoice, detectIngredients, recognizeFood } from '@/lib/api';
+import { translateMlLabel } from '@/lib/ml-labels';
 import { useAuth } from '@/lib/auth';
 import NativeAudio from 'native-audio';
 
@@ -293,6 +294,14 @@ export function AssistantChatPanel({
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
   };
 
+  const formatNaturalList = (items: string[]) => {
+    const cleaned = items.map((item) => item.trim()).filter(Boolean);
+    if (cleaned.length === 0) return '';
+    if (cleaned.length === 1) return cleaned[0];
+    if (cleaned.length === 2) return `${cleaned[0]} ve ${cleaned[1]}`;
+    return `${cleaned.slice(0, -1).join(', ')} ve ${cleaned[cleaned.length - 1]}`;
+  };
+
   const pickImage = async (): Promise<string | null> => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
@@ -313,20 +322,20 @@ export function AssistantChatPanel({
       setErrorMessage('');
 
       const { food_name, confidence } = await recognizeFood(imageUri);
-      const readableName = food_name.replace(/_/g, ' ');
+      const readableName = translateMlLabel(food_name);
 
       setMessages((current) => [
         ...current,
         {
           id: `user-${Date.now()}`,
           role: 'user',
-          text: `📷 ${readableName} (${Math.round(confidence * 100)}% emin)`,
+          text: `📷 Tespit edilen yemek ${readableName} gibi görünüyor (%${Math.round(confidence * 100)} emin). Buna uygun tarif verir misin?`,
           mode: 'text',
         },
       ]);
 
       if (!accessToken || !isLoggedIn) return;
-      const response = await chatWithAssistant(accessToken, `${readableName} tarifi ver`);
+      const response = await chatWithAssistant(accessToken, `Tespit edilen yemek ${readableName}. Bana buna uygun bir tarif verir misin?`);
       pushAssistantMessage(buildAssistantText(response.answer), { mode: 'text' });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -353,23 +362,30 @@ export function AssistantChatPanel({
         return;
       }
 
-      const ingredientList = ingredients
-        .map((i) => `${i.name.replace(/_/g, ' ')} (%${Math.round(i.confidence * 100)})`)
+      const translatedIngredients = ingredients.map((i) => ({
+        name: translateMlLabel(i.name),
+        confidence: Math.round(i.confidence * 100),
+      }));
+      const ingredientList = translatedIngredients
+        .map((i) => `${i.name} (%${i.confidence})`)
         .join(', ');
+      const naturalNames = formatNaturalList(translatedIngredients.map((i) => i.name));
 
       setMessages((current) => [
         ...current,
         {
           id: `user-${Date.now()}`,
           role: 'user',
-          text: `📷 Tespit edilenler: ${ingredientList}`,
+          text: `📷 Elimde ${ingredientList} var. Bunlarla bana bir tarif verir misin?`,
           mode: 'text',
         },
       ]);
 
       if (!accessToken || !isLoggedIn) return;
-      const names = ingredients.map((i) => i.name.replace(/_/g, ' ')).join(', ');
-      const response = await chatWithAssistant(accessToken, `Elimde şu malzemeler var: ${names}. Bunlarla yapabileceğim bir tarif öner.`);
+      const response = await chatWithAssistant(
+        accessToken,
+        `Elimde ${naturalNames} var. Bu malzemelere uygun bir tarif verir misin?`
+      );
       pushAssistantMessage(buildAssistantText(response.answer), { mode: 'text' });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);

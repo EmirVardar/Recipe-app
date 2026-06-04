@@ -283,7 +283,7 @@ public class AssistantChatService {
 
                     String answer = String.format(
                             "Anladım, tahmini değerleri hesapladım: **%s** için yaklaşık **%.0f kcal**, %.0fg protein, %.0fg karb, %.0fg yağ. %s öğününe ekleyeyim mi?",
-                            sourceName, estCalories, estProtein, estCarbs, estFat, mealType.toLowerCase());
+                            sourceName, estCalories, estProtein, estCarbs, estFat, mealTypeForSentence(mealType));
                     conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
                     conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
                     return response(answer);
@@ -364,8 +364,8 @@ public class AssistantChatService {
                 ));
             }
 
-            return String.format("✓ **%s**, %s ogunune eklendi (%.0f kcal). Gunluk toplamlarin guncellendi.",
-                    sourceName, mealType.toLowerCase(), calories);
+            return String.format("✓ **%s**, %s öğününe eklendi (%.0f kcal). Günlük toplamların güncellendi.",
+                    sourceName, mealTypeForSentence(mealType), calories);
 
         } catch (Exception e) {
             return "Uzgunum, bunu ogun kaydina ekleyemedim. Lutfen tekrar dene.";
@@ -418,7 +418,7 @@ public class AssistantChatService {
 
                     String answer = String.format(
                             "**%s** bulundu (%.1f porsiyon için yaklaşık %.0f kcal). %s öğününe ekleyeyim mi? Onaylamak için 'evet', farklı bir şey girmek için 'değiştir' yaz veya söyle.",
-                            recipeName, servings, calories, mealType.toLowerCase());
+                            recipeName, servings, calories, mealTypeForSentence(mealType));
 
                     conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
                     conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
@@ -449,7 +449,7 @@ public class AssistantChatService {
                     String unitLabel = "GRAM".equals(unit) ? "g" : "PIECE".equals(unit) ? "adet" : "porsiyon";
                     String answer = String.format(
                             "**%s** bulundu (%.0f %s için %.0f kcal). %s öğününe ekleyeyim mi? Onaylamak için 'evet', farklı bir şey girmek için 'değiştir' yaz veya söyle.",
-                            foundFoodName, quantity, unitLabel, adjustedCalories, mealType.toLowerCase());
+                            foundFoodName, quantity, unitLabel, adjustedCalories, mealTypeForSentence(mealType));
 
                     conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
                     conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
@@ -488,7 +488,7 @@ public class AssistantChatService {
 
             String answer = String.format(
                     "**%s** veritabanımda yok ama tahmini değerleri hesapladım: yaklaşık **%.0f kcal**, %.0fg protein, %.0fg karbonhidrat, %.0fg yağ. %s öğününe ekleyeyim mi?",
-                    foodName, estCalories, estProtein, estCarbs, estFat, mealType.toLowerCase());
+                    foodName, estCalories, estProtein, estCarbs, estFat, mealTypeForSentence(mealType));
             conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
             conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
             return response(answer);
@@ -776,6 +776,18 @@ public class AssistantChatService {
             default -> mealType;
         };
     }
+
+    private String mealTypeForSentence(String mealType) {
+        if (mealType == null) return "";
+        return switch (mealType) {
+            case "BREAKFAST" -> "kahvaltı";
+            case "LUNCH" -> "öğle";
+            case "DINNER" -> "akşam";
+            case "SNACK" -> "ara";
+            default -> mealType;
+        };
+    }
+
     private double extractCaloriesFromText(String text, double servings) {
         try {
             String[] lines = text.split("\n");
@@ -1069,7 +1081,7 @@ public class AssistantChatService {
 
             String answer = String.format(
                     "**%s** için tahmini: **%.0f kcal**, %.0fg protein, %.0fg karb, %.0fg yağ. %s öğününe ekleyeyim mi? Onaylamak için 'evet', iptal için 'hayır' yaz veya söyle.",
-                    foodName, estCalories, estProtein, estCarbs, estFat, mealType.toLowerCase());
+                    foodName, estCalories, estProtein, estCarbs, estFat, mealTypeForSentence(mealType));
 
             conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
             conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, answer);
