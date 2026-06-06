@@ -11,12 +11,15 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.student.recipe.dto.assistant.AssistantChatResponseDto;
+import com.student.recipe.dto.assistant.AssistantRecipePreviewDto;
 import com.student.recipe.dto.assistant.UserAiProfileContextDto;
 import com.student.recipe.dto.meal.MealLogItemCreateRequestDto;
 import com.student.recipe.dto.meal.RecipeMealLogItemCreateRequestDto;
 import com.student.recipe.entity.Conversation;
 import com.student.recipe.entity.ConversationMessage;
+import com.student.recipe.entity.Recipe;
 import com.student.recipe.entity.enums.ConversationMessageRole;
+import com.student.recipe.repository.RecipeRepository;
 import com.student.recipe.repository.UserRepository;
 import com.student.recipe.service.MealTrackingService;
 import com.student.recipe.service.UserFridgeService;
@@ -36,8 +39,11 @@ public class AssistantChatService {
             
             KESIN KURALLAR:
             - Cevabını her zaman verilen kullanıcı profiline göre kişiselleştir.
-            - Kullanıcının alerjileri varsa o içerikleri içeren tarifleri ASLA önerme.
-            - Kullanıcının intoleransları varsa o içeriklerden kaçın.
+            - Kullanıcının o anki mesajdaki açık isteği birincil önceliktir. Kullanıcı özellikle bir yemek, içerik veya tarif istiyorsa önce onu cevapla.
+            - Kullanıcının bu mesajda özellikle istemediği, içinde olmasın dediği veya kaçındığını belirttiği içerikler, favori yiyeceklerden ve genel tercihlerden daha yüksek önceliklidir.
+            - Alerji bilgisi önemli bir güvenlik bilgisidir. Kullanıcı alerjisi olan bir içerikle ilgili özellikle tarif isterse isteğini reddetme, konuyu değiştirme ve yerine başka ana tarif önermeye çalışma. Önce tam olarak istediği tarifi ver. Tarif bittikten sonra en sonda 1-2 kısa cümleyle alerji nedeniyle bunun kendisi için riskli olabileceğini söyle ve güvenli bir alternatif öner.
+            - İntoleranslar ve kaçınılan yiyecekler güçlü tercih/sınırlardır. Kullanıcı özellikle tersini istemediği sürece bu içeriklerden kaçın. Ancak kullanıcı açıkça bu içerikleri isterse ana isteği yine cevapla; ana cevabı değiştirme, sadece en sonda kısa bir uyarı ve daha uygun bir alternatif sun.
+            - Tercih edilen yiyecekler ve sevilen içerikler sadece hafif bir yönlendirme sinyalidir; kullanıcının anlık isteğini bastırmaz ve cevabı tek başına belirlemez.
             - Önerilerini her zaman kullanıcının hedefi ve beslenme tipine uygun ver.
             - Birincil kaynak olarak CONTEXT bölümünü kullan. Tarif detayları uydurma.
             - Tıbbi teşhis veya ilaç doz önerisi verme.
@@ -46,6 +52,11 @@ public class AssistantChatService {
             - Kişiselleştirilmiş günlük geri bildirim için BUGÜNKÜ BESLENME KAYDI bölümünü kullan.
             - Cevaplari kisa, net ve dogrudan ver.
             - Kullanici istemedikce uzun aciklama, madde listesi veya gereksiz uyarilar ekleme.
+            - Risk veya çelişki varsa şu zorunlu sırayı kullan: 
+              1. Önce kullanıcının istediği tarifi veya cevabı ver.
+              2. Ardından ayrı bir kısa notla risk uyarısını yaz.
+              3. En son tek bir güvenli alternatif öner.
+            - Kullanıcı "yumurtalı tarif", "sütlü tarif" gibi açık bir içerik istiyorsa, alerji yüzünden ana cevabı yumurtasız veya sütsüz başka bir tarife çevirme.
             """;
 
     private static final String INTENT_SYSTEM_PROMPT = """
@@ -114,10 +125,12 @@ public class AssistantChatService {
     private final EmbeddingVectorService vectorService;
     private final ConversationMemoryService conversationMemoryService;
     private final UserRepository userRepository;
+    private final RecipeRepository recipeRepository;
     private final MealTrackingService mealTrackingService;
     private final UserFridgeService userFridgeService;
     private final UserFridgeContextService userFridgeContextService;
     private final UserDailyHealthContextService userDailyHealthContextService;
+    private final DailyCalorieTargetService dailyCalorieTargetService;
     private final ObjectMapper objectMapper;
 
     public AssistantChatService(
@@ -127,10 +140,12 @@ public class AssistantChatService {
             EmbeddingVectorService vectorService,
             ConversationMemoryService conversationMemoryService,
             UserRepository userRepository,
+            RecipeRepository recipeRepository,
             MealTrackingService mealTrackingService,
             UserFridgeService userFridgeService,
             UserFridgeContextService userFridgeContextService,
             UserDailyHealthContextService userDailyHealthContextService,
+            DailyCalorieTargetService dailyCalorieTargetService,
             ObjectMapper objectMapper
     ) {
         this.openAiService = openAiService;
@@ -139,14 +154,17 @@ public class AssistantChatService {
         this.vectorService = vectorService;
         this.conversationMemoryService = conversationMemoryService;
         this.userRepository = userRepository;
+        this.recipeRepository = recipeRepository;
         this.mealTrackingService = mealTrackingService;
         this.userFridgeService = userFridgeService;
         this.userFridgeContextService = userFridgeContextService;
         this.userDailyHealthContextService = userDailyHealthContextService;
+        this.dailyCalorieTargetService = dailyCalorieTargetService;
         this.objectMapper = objectMapper;
     }
 
     public AssistantChatResponseDto chat(String userEmail, String message) {
+        long totalStartNs = System.nanoTime();
         if (message == null || message.trim().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "message is required");
         }
@@ -171,7 +189,9 @@ public class AssistantChatService {
             return handleMemoryQuery(userEmail, message, conversation, historyBlock);
         }
 
+        long intentStartNs = System.nanoTime();
         String intentJson = openAiService.chat(INTENT_SYSTEM_PROMPT, message.trim());
+        long intentMs = toMillis(System.nanoTime() - intentStartNs);
         String intent = extractIntent(intentJson);
 
         if ("LOG_MEAL".equals(intent)) {
@@ -187,7 +207,7 @@ public class AssistantChatService {
             return handleFridgeAddIntent(userEmail, message, intentJson, conversation, historyBlock);
         }
 
-        return handleNormalChat(userEmail, message, conversation, historyBlock, history);
+        return handleNormalChat(userEmail, message, conversation, historyBlock, history, totalStartNs, intentMs);
     }
 
     // ── PENDING CONFIRMATION ────────────────────────────────────────
@@ -388,7 +408,7 @@ public class AssistantChatService {
             String unit = (String) intentData.getOrDefault("unit", "GRAM");
 
             String mealSearchQuery = expandFoodQuery(foodName);
-            List<DocumentMatch> matches = vectorService.findRelevant(mealSearchQuery, 5);
+            List<DocumentMatch> matches = vectorService.findRelevant(mealSearchQuery, 5).matches();
             DocumentMatch bestMatch = matches.stream()
                     .filter(m -> m.distance() <= 0.50)
                     .filter(m -> "recipe".equals(m.metadata().get("kind"))
@@ -495,7 +515,7 @@ public class AssistantChatService {
 
         } catch (Exception e) {
             List<ConversationMessage> history = conversationMemoryService.getLastMessages(conversation.getId(), HISTORY_LIMIT);
-            return handleNormalChat(userEmail, message, conversation, historyBlock, history);
+            return handleNormalChat(userEmail, message, conversation, historyBlock, history, System.nanoTime(), -1L);
         }
     }
 
@@ -506,7 +526,7 @@ public class AssistantChatService {
 
         UserAiProfileContextDto context = userAiProfileContextService.buildContext(userEmail);
         String profileContext = userAiContextPromptBuilder.buildProfileParagraph(context);
-        String dailyNutritionContext = buildDailyNutritionContext(userEmail);
+        String dailyNutritionContext = buildDailyNutritionContext(userEmail, context);
         String dailyHealthContext = userDailyHealthContextService.buildTodayHealthSummary();
 
         String userPrompt = """
@@ -544,22 +564,26 @@ public class AssistantChatService {
     // ── NORMAL CHAT (RAG) ───────────────────────────────────────────
 
     private AssistantChatResponseDto handleNormalChat(
-            String userEmail, String message, Conversation conversation, String historyBlock, List<ConversationMessage> history) {
+            String userEmail, String message, Conversation conversation, String historyBlock, List<ConversationMessage> history,
+            long totalStartNs, long intentMs) {
 
         UserAiProfileContextDto context = userAiProfileContextService.buildContext(userEmail);
         String profileContext = userAiContextPromptBuilder.buildProfileParagraph(context);
-        String dailyNutritionContext = buildDailyNutritionContext(userEmail);
+        String dailyNutritionContext = buildDailyNutritionContext(userEmail, context);
         String dailyHealthContext = userDailyHealthContextService.buildTodayHealthSummary();
 
         String ragQuery = buildRagQuery(message.trim(), history);
+        long normalizationStartNs = System.nanoTime();
         String searchQuery = openAiService.chat(
                 "Kullanıcının mesajından sadece aranacak yemek veya tarif adını çıkar. Sadece ismi yaz, başka hiçbir şey yazma. Örnek: 'mercimek çorbası tarifi ver' → 'mercimek çorbası', 'canım pilav çekti bana pilav tarifi ver' → 'pilav'",
                 ragQuery
         );
+        long normalizationMs = toMillis(System.nanoTime() - normalizationStartNs);
         String finalSearchQuery = (searchQuery == null || searchQuery.isBlank() || searchQuery.length() > 100)
                 ? ragQuery
                 : searchQuery.trim();
-        List<DocumentMatch> matches = vectorService.findRelevant(finalSearchQuery, 10);
+        EmbeddingVectorService.RetrievalPerfResult retrieval = vectorService.findRelevant(finalSearchQuery, 10);
+        List<DocumentMatch> matches = retrieval.matches();
         List<DocumentMatch> recipeMatches = matches.stream()
                 .filter(m -> "recipe".equals(m.metadata().get("kind")))
                 .filter(m -> m.distance() <= RELEVANCE_THRESHOLD)
@@ -603,13 +627,28 @@ public class AssistantChatService {
                 message.trim()
         );
 
+        long answerStartNs = System.nanoTime();
         String answer = openAiService.chat(SYSTEM_PROMPT, userPrompt);
+        long answerMs = toMillis(System.nanoTime() - answerStartNs);
         String answerForUser = appendSourceLine(stripSourceLine(answer), finalMatches);
 
         conversationMemoryService.append(conversation, ConversationMessageRole.USER, message.trim());
         conversationMemoryService.append(conversation, ConversationMessageRole.ASSISTANT, stripSourceLine(answerForUser));
+        System.out.println(
+                "PERF_RAG_SUMMARY " +
+                "intentMs=" + intentMs +
+                " queryNormalizationMs=" + normalizationMs +
+                " embeddingMs=" + retrieval.embeddingMs() +
+                " chromaQueryMs=" + retrieval.chromaQueryMs() +
+                " answerGenerationMs=" + answerMs +
+                " totalMs=" + toMillis(System.nanoTime() - totalStartNs)
+        );
 
-        return response(answerForUser);
+        return response(answerForUser, null, buildRecipePreview(finalMatches));
+    }
+
+    private long toMillis(long durationNs) {
+        return durationNs / 1_000_000L;
     }
 
     // ── FRIDGE QUERY ────────────────────────────────────────────────
@@ -619,7 +658,7 @@ public class AssistantChatService {
 
         UserAiProfileContextDto context = userAiProfileContextService.buildContext(userEmail);
         String profileContext = userAiContextPromptBuilder.buildProfileParagraph(context);
-        String dailyNutritionContext = buildDailyNutritionContext(userEmail);
+        String dailyNutritionContext = buildDailyNutritionContext(userEmail, context);
         String dailyHealthContext = userDailyHealthContextService.buildTodayHealthSummary();
         String fridgeContext = userFridgeContextService.buildFridgeContext(userEmail);
 
@@ -676,7 +715,7 @@ public class AssistantChatService {
 
             String searchQuery = expandFoodQuery(foodName);
 
-            List<DocumentMatch> matches = vectorService.findRelevant(searchQuery, 5);
+            List<DocumentMatch> matches = vectorService.findRelevant(searchQuery, 5).matches();
             DocumentMatch bestMatch = matches.stream()
                     .filter(m -> m.distance() <= RELEVANCE_THRESHOLD)
                     .filter(m -> "food".equals(m.metadata().get("kind")))
@@ -720,7 +759,7 @@ public class AssistantChatService {
 
         } catch (Exception e) {
             List<ConversationMessage> history = conversationMemoryService.getLastMessages(conversation.getId(), HISTORY_LIMIT);
-            return handleNormalChat(userEmail, message, conversation, historyBlock, history);
+            return handleNormalChat(userEmail, message, conversation, historyBlock, history, System.nanoTime(), -1L);
         }
     }
 
@@ -806,10 +845,19 @@ public class AssistantChatService {
         return 0.0;
     }
 
-    private String buildDailyNutritionContext(String userEmail) {
+    private String buildDailyNutritionContext(String userEmail, UserAiProfileContextDto profileContext) {
         try {
             var dailyMeals = mealTrackingService.getDailyMeals(userEmail, null);
             if (dailyMeals == null) return "";
+
+            double consumedCalories = dailyMeals.totalCalories() != null ? dailyMeals.totalCalories() : 0.0;
+            double consumedProtein = dailyMeals.totalProtein() != null ? dailyMeals.totalProtein() : 0.0;
+            double consumedCarbs = dailyMeals.totalCarbs() != null ? dailyMeals.totalCarbs() : 0.0;
+            double consumedFat = dailyMeals.totalFat() != null ? dailyMeals.totalFat() : 0.0;
+            UserDailyHealthContextService.TodayHealthStats todayHealthStats = userDailyHealthContextService.getTodayHealthStats();
+            double burnedCalories = todayHealthStats != null ? todayHealthStats.burnedCalories() : 0.0;
+            DailyCalorieTargetService.DailyCalorieSummary calorieSummary =
+                    dailyCalorieTargetService.summarize(profileContext, consumedCalories, burnedCalories);
 
             StringBuilder sb = new StringBuilder();
             sb.append(String.format("""
@@ -819,11 +867,32 @@ public class AssistantChatService {
                     Toplam karbonhidrat: %.1f g
                     Toplam yag: %.1f g
                     """,
-                    dailyMeals.totalCalories() != null ? dailyMeals.totalCalories() : 0.0,
-                    dailyMeals.totalProtein() != null ? dailyMeals.totalProtein() : 0.0,
-                    dailyMeals.totalCarbs() != null ? dailyMeals.totalCarbs() : 0.0,
-                    dailyMeals.totalFat() != null ? dailyMeals.totalFat() : 0.0
+                    consumedCalories,
+                    consumedProtein,
+                    consumedCarbs,
+                    consumedFat
             ));
+
+            if (calorieSummary.targetCalories() != null) {
+                sb.append(String.format("""
+                        Gunluk tahmini kalori hedefi: %d kcal
+                        Bugunku yakilan aktif kalori: %.0f kcal
+                        Bugunku net kalori (alinan - yakilan): %.0f kcal
+                        Hedefe gore kalan kalori: %.0f kcal
+                        """,
+                        calorieSummary.targetCalories(),
+                        calorieSummary.burnedCalories(),
+                        calorieSummary.netCalories(),
+                        calorieSummary.remainingCalories() != null ? calorieSummary.remainingCalories() : 0.0
+                ));
+
+                if (calorieSummary.suggestedExtraSteps() != null) {
+                    sb.append(String.format(
+                            "Bugun hedefin uzerindesin. Dengelemek icin tahmini ek adim ihtiyaci: %d adim%n",
+                            calorieSummary.suggestedExtraSteps()
+                    ));
+                }
+            }
 
             if (dailyMeals.meals() != null) {
                 for (var meal : dailyMeals.meals()) {
@@ -1107,6 +1176,61 @@ public class AssistantChatService {
     }
 
     private AssistantChatResponseDto response(String answer, List<String> quickReplies) {
-        return new AssistantChatResponseDto(answer, quickReplies);
+        return new AssistantChatResponseDto(answer, quickReplies, null);
+    }
+
+    private AssistantChatResponseDto response(String answer, List<String> quickReplies, AssistantRecipePreviewDto recipePreview) {
+        return new AssistantChatResponseDto(answer, quickReplies, recipePreview);
+    }
+
+    private AssistantRecipePreviewDto buildRecipePreview(List<DocumentMatch> matches) {
+        for (DocumentMatch match : matches) {
+            Object kind = match.metadata().get("kind");
+            Object title = match.metadata().get("title");
+            if (!"recipe".equals(kind) || title == null) {
+                continue;
+            }
+
+            String recipeTitle = title.toString().trim();
+            if (recipeTitle.isBlank()) {
+                continue;
+            }
+
+            Recipe recipe = findRecipeByTitle(recipeTitle);
+            if (recipe != null) {
+                return new AssistantRecipePreviewDto(
+                        recipe.getId(),
+                        recipe.getTitleTr() != null && !recipe.getTitleTr().isBlank() ? recipe.getTitleTr() : recipe.getTitle(),
+                        recipe.getImage()
+                );
+            }
+        }
+
+        return null;
+    }
+
+    private Recipe findRecipeByTitle(String recipeTitle) {
+        List<Recipe> exactMatches = recipeRepository.findExactTitleMatches(recipeTitle);
+        if (!exactMatches.isEmpty()) {
+            return exactMatches.get(0);
+        }
+
+        List<Long> recipeIds = recipeRepository.searchRecipeIds(
+                recipeTitle,
+                null,
+                null,
+                false,
+                20.0,
+                null,
+                null,
+                null,
+                null
+        );
+
+        if (recipeIds.isEmpty()) {
+            return null;
+        }
+
+        return recipeRepository.findById(recipeIds.get(0)).orElse(null);
     }
 }

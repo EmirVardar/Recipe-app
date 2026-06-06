@@ -28,4 +28,11 @@ public class FoodProductController {
     ) {
         return ResponseEntity.ok(foodProductQueryService.search(q, limit));
     }
+
+    @GetMapping("/best-match")
+    public ResponseEntity<FoodProductSearchItemDto> getBestFoodMatch(@RequestParam String q) {
+        return foodProductQueryService.findBestMatch(q)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
 }

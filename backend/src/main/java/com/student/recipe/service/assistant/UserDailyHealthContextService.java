@@ -19,25 +19,44 @@ public class UserDailyHealthContextService {
 
     @Transactional(readOnly = true)
     public String buildTodayHealthSummary() {
+        TodayHealthStats stats = getTodayHealthStats();
+        if (stats == null) {
+            return "";
+        }
+
+        return String.format("""
+        === BUGÜNKÜ SAĞLIK ÖZETİ ===
+        Adım sayısı: %d
+        Yakılan aktif kalori: %.0f kcal
+        """,
+                stats.steps(),
+                stats.burnedCalories()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public TodayHealthStats getTodayHealthStats() {
         try {
             HealthTransferRecord healthRecord = healthTransferRecordRepository
                     .findTopByDateOrderByIdDesc(LocalDate.now())
                     .orElse(null);
 
             if (healthRecord == null) {
-                return "";
+                return null;
             }
 
-            return String.format("""
-        === BUGÜNKÜ SAĞLIK ÖZETİ ===
-        Adım sayısı: %d
-        Yakılan aktif kalori: %.0f kcal
-        """,
+            return new TodayHealthStats(
                     healthRecord.getAdim() != null ? healthRecord.getAdim() : 0,
                     healthRecord.getKalori() != null ? healthRecord.getKalori() : 0.0
             );
         } catch (Exception e) {
-            return "";
+            return null;
         }
+    }
+
+    public record TodayHealthStats(
+            int steps,
+            double burnedCalories
+    ) {
     }
 }

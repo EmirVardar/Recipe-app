@@ -22,6 +22,12 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class EmbeddingVectorService {
 
+    public record RetrievalPerfResult(
+            List<DocumentMatch> matches,
+            long embeddingMs,
+            long chromaQueryMs
+    ) {}
+
     private static final String COLLECTION = "recipe_kg";
 
     private final ChromaClient chroma;
@@ -48,16 +54,20 @@ public class EmbeddingVectorService {
         chroma.upsert(COLLECTION, vectorId, vector, metadata, doc);
     }
 
-    public List<DocumentMatch> findRelevant(String query, int topK) {
+    public RetrievalPerfResult findRelevant(String query, int topK) {
+        long embeddingStartNs = System.nanoTime();
         List<Float> vector = embed(query);
+        long embeddingMs = (System.nanoTime() - embeddingStartNs) / 1_000_000L;
+        long chromaStartNs = System.nanoTime();
         Map<?, ?> result = chroma.query(vector, topK);
+        long chromaQueryMs = (System.nanoTime() - chromaStartNs) / 1_000_000L;
         List<DocumentMatch> matches = parseQueryResult(result);
 
         // Bunu ekle:
         matches.forEach(m -> log.info("Match: distance={} text={}",
                 m.distance(), m.text().substring(0, Math.min(80, m.text().length()))));
 
-        return matches;
+        return new RetrievalPerfResult(matches, embeddingMs, chromaQueryMs);
     }
 
     private String buildRecipeDocument(Recipe recipe) {

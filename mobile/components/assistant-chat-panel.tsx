@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
@@ -9,6 +10,7 @@ import {
   Alert,
   Animated,
   Easing,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -20,7 +22,15 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { chatWithAssistant, chatWithAssistantVoice, detectIngredients, recognizeFood } from '@/lib/api';
+import {
+  addFridgeItem,
+  chatWithAssistant,
+  chatWithAssistantVoice,
+  detectIngredients,
+  findBestFoodProductMatch,
+  recognizeFood,
+  type FoodProductSearchItemResponse,
+} from '@/lib/api';
 import { translateMlLabel } from '@/lib/ml-labels';
 import { useAuth } from '@/lib/auth';
 import NativeAudio from 'native-audio';
@@ -34,6 +44,11 @@ type ChatMessage = {
   transcript?: string;
   mode?: 'text' | 'voice';
   quickReplies?: string[];
+  recipePreview?: {
+    id: number;
+    title: string;
+    image: string | null;
+  } | null;
 };
 
 type AssistantMode = 'chat' | 'voice';
@@ -141,6 +156,14 @@ function buildAssistantText(answer: string) {
   return answer?.trim() ?? '';
 }
 
+function getDefaultFridgePayload(product: FoodProductSearchItemResponse) {
+  if ((product.pieceGramWeight ?? 0) > 0) {
+    return { quantity: 1, unitType: 'PIECE' as const, label: '1 adet' };
+  }
+
+  return { quantity: 100, unitType: 'GRAM' as const, label: '100 g' };
+}
+
 async function writeAudioResponse(base64Audio: string) {
   const directory = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
   if (!directory) {
@@ -166,6 +189,7 @@ export function AssistantChatPanel({
   enableModeTabs = false,
   defaultMode = 'chat',
 }: AssistantChatPanelProps) {
+  const router = useRouter();
   const { accessToken, isLoggedIn } = useAuth();
   const [activeMode, setActiveMode] = useState<AssistantMode>(defaultMode);
   const [input, setInput] = useState('');
@@ -369,24 +393,83 @@ export function AssistantChatPanel({
       const ingredientList = translatedIngredients
         .map((i) => `${i.name} (%${i.confidence})`)
         .join(', ');
-      const naturalNames = formatNaturalList(translatedIngredients.map((i) => i.name));
 
       setMessages((current) => [
         ...current,
         {
           id: `user-${Date.now()}`,
           role: 'user',
-          text: `📷 Elimde ${ingredientList} var. Bunlarla bana bir tarif verir misin?`,
+          text: `📷 Tespit edilen malzemeler: ${ingredientList}`,
           mode: 'text',
         },
       ]);
 
       if (!accessToken || !isLoggedIn) return;
-      const response = await chatWithAssistant(
-        accessToken,
-        `Elimde ${naturalNames} var. Bu malzemelere uygun bir tarif verir misin?`
+
+      const matches = await Promise.all(
+        translatedIngredients.map(async (ingredient) => {
+          return {
+            ingredient,
+            product: await findBestFoodProductMatch(ingredient.name),
+          };
+        })
       );
-      pushAssistantMessage(buildAssistantText(response.answer), { mode: 'text' });
+
+      const foundMatches = matches.filter(
+        (item): item is { ingredient: (typeof translatedIngredients)[number]; product: FoodProductSearchItemResponse } =>
+          item.product != null
+      );
+      const missingNames = matches.filter((item) => item.product == null).map((item) => item.ingredient.name);
+
+      if (!foundMatches.length) {
+        const notFoundText = missingNames.length
+          ? `Tespit edilen malzemeleri ürün veritabanında bulamadım: ${formatNaturalList(missingNames)}.`
+          : 'Tespit edilen malzemeler ürün veritabanında bulunamadı.';
+        pushAssistantMessage(notFoundText, { mode: 'text' });
+        return;
+      }
+
+      const foundSummary = foundMatches
+        .map(({ product }) => {
+          const defaults = getDefaultFridgePayload(product);
+          return `${product.name} (${defaults.label})`;
+        })
+        .join(', ');
+      const missingSummary = missingNames.length ? `\nBulunamayanlar: ${formatNaturalList(missingNames)}.` : '';
+
+      const shouldAdd = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          'Buzdolabına Ekle',
+          `${foundSummary} buzdolabına eklensin mi?${missingSummary}`,
+          [
+            { text: 'İptal', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Ekle', onPress: () => resolve(true) },
+          ]
+        );
+      });
+
+      if (!shouldAdd) {
+        pushAssistantMessage('Malzeme ekleme işlemi iptal edildi.', { mode: 'text' });
+        return;
+      }
+
+      await Promise.all(
+        foundMatches.map(({ product }) => {
+          const defaults = getDefaultFridgePayload(product);
+          return addFridgeItem(accessToken, {
+            foodProductId: product.id,
+            quantity: defaults.quantity,
+            unitType: defaults.unitType,
+          });
+        })
+      );
+
+      const successText = missingNames.length
+        ? `${formatNaturalList(foundMatches.map((item) => item.product.name))} buzdolabına eklendi. ${formatNaturalList(
+            missingNames
+          )} için eşleşme bulunamadı.`
+        : `${formatNaturalList(foundMatches.map((item) => item.product.name))} buzdolabına eklendi.`;
+      pushAssistantMessage(successText, { mode: 'text' });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       Alert.alert('Hata', msg);
@@ -435,6 +518,7 @@ export function AssistantChatPanel({
       pushAssistantMessage(buildAssistantText(response.answer), {
         mode: 'text',
         quickReplies: response.quickReplies ?? undefined,
+        recipePreview: response.recipePreview ?? null,
       });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Mesaj gönderilemedi.');
@@ -463,9 +547,6 @@ export function AssistantChatPanel({
         return;
       }
 
-      NativeAudio.configure(FRAME_MS);
-      await NativeAudio.start();
-
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
@@ -474,6 +555,9 @@ export function AssistantChatPanel({
       const nextRecording = new Audio.Recording();
       await nextRecording.prepareToRecordAsync(RECORDING_OPTIONS);
       await nextRecording.startAsync();
+
+      NativeAudio.configure(FRAME_MS);
+      await NativeAudio.start();
 
       setRecording(nextRecording);
       setIsRecording(true);
@@ -498,6 +582,7 @@ export function AssistantChatPanel({
     isPressedRef.current = false;
     setVoicePhase('thinking');
     resetWave();
+    const voiceRequestStartMs = Date.now();
 
     try {
       NativeAudio.stop();
@@ -541,6 +626,7 @@ export function AssistantChatPanel({
       ]);
 
       if (response.audio) {
+        NativeAudio.activatePlaybackSession();
         const audioUri = await writeAudioResponse(response.audio);
         if (soundRef.current) {
           await soundRef.current.unloadAsync();
@@ -573,7 +659,9 @@ export function AssistantChatPanel({
           }
         });
         await sound.playAsync();
+        console.log('PERF_VOICE_CLIENT_SUMMARY totalVoiceResponseMs=', Date.now() - voiceRequestStartMs);
       } else {
+        console.log('PERF_VOICE_CLIENT_SUMMARY totalVoiceResponseMs=', Date.now() - voiceRequestStartMs);
         setVoicePhase('idle');
       }
     } catch (error) {
@@ -583,6 +671,19 @@ export function AssistantChatPanel({
     } finally {
       setLoading(false);
       scrollToBottom();
+    }
+  };
+
+  const stopPlayback = async () => {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.stopAsync();
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+    } finally {
+      resetWave();
+      setVoicePhase('idle');
     }
   };
 
@@ -741,6 +842,24 @@ export function AssistantChatPanel({
                   <Text style={[styles.messageText, message.role === 'user' ? styles.userText : styles.assistantText]}>
                     {message.text}
                   </Text>
+                  {message.recipePreview ? (
+                    <Pressable
+                      style={styles.recipePreviewCard}
+                      onPress={() => router.push(`/recipes/${message.recipePreview?.id}`)}>
+                      <Image
+                        source={{
+                          uri:
+                            message.recipePreview.image ??
+                            'https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&w=1200&q=80',
+                        }}
+                        style={styles.recipePreviewImage}
+                      />
+                      <View style={styles.recipePreviewContent}>
+                        <Text style={styles.recipePreviewEyebrow}>Tarif</Text>
+                        <Text style={styles.recipePreviewTitle}>{message.recipePreview.title}</Text>
+                      </View>
+                    </Pressable>
+                  ) : null}
                   {message.transcript ? <Text style={styles.transcriptText}>Metin: {message.transcript}</Text> : null}
                 </View>
               ))}
@@ -856,11 +975,18 @@ export function AssistantChatPanel({
 
             <Pressable
               disabled={loading || !recordingSupported}
+              onPress={() => {
+                if (voicePhase === 'speaking') {
+                  void stopPlayback();
+                }
+              }}
               onPressIn={() => {
-                void startRecording();
+                if (voicePhase !== 'speaking') {
+                  void startRecording();
+                }
               }}
               onPressOut={() => {
-                if (isRecording) {
+                if (voicePhase !== 'speaking' && isRecording) {
                   void stopRecording();
                 }
               }}
@@ -869,10 +995,16 @@ export function AssistantChatPanel({
                 pressed && !loading && recordingSupported ? styles.voiceTriggerPressed : null,
                 loading || !recordingSupported ? styles.disabledButton : null,
               ]}>
-              <View style={[styles.voiceTriggerInner, isRecording ? styles.voiceTriggerInnerActive : null]}>
-                <Ionicons name={isRecording ? 'radio-button-on' : 'mic'} size={24} color="#FFFFFF" />
+            <View style={[styles.voiceTriggerInner, isRecording ? styles.voiceTriggerInnerActive : null]}>
+                <Ionicons name={voicePhase === 'speaking' ? 'stop' : isRecording ? 'radio-button-on' : 'mic'} size={24} color="#FFFFFF" />
               </View>
-              <Text style={styles.voiceTriggerLabel}>{isRecording ? 'Bırakınca gönderilir' : 'Basılı tut ve konuş'}</Text>
+              <Text style={styles.voiceTriggerLabel}>
+                {voicePhase === 'speaking'
+                  ? 'Durdur'
+                  : isRecording
+                    ? 'Bırakınca gönderilir'
+                    : 'Basılı tut ve konuş'}
+              </Text>
             </Pressable>
 
             {latestVoiceTranscript ? (
@@ -1022,6 +1154,37 @@ const styles = StyleSheet.create({
     color: '#E5E7EB',
     fontSize: 12,
     lineHeight: 18,
+  },
+  recipePreviewCard: {
+    marginTop: 6,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  recipePreviewImage: {
+    width: '100%',
+    height: 140,
+    backgroundColor: '#E5E7EB',
+  },
+  recipePreviewContent: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4,
+  },
+  recipePreviewEyebrow: {
+    color: '#6B7280',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  recipePreviewTitle: {
+    color: '#111827',
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
   },
   errorCard: {
     backgroundColor: '#FFF7ED',

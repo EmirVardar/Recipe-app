@@ -14,13 +14,18 @@ import java.util.Map;
 @Service
 public class OpenAiAudioService {
 
+    public record TranscriptionResult(String text, long durationMs) {}
+
+    public record SynthesisResult(byte[] audioBytes, long durationMs) {}
+
     private final WebClient webClient;
 
     public OpenAiAudioService(WebClient openAiAudioWebClient) {
         this.webClient = openAiAudioWebClient;
     }
 
-    public String transcribe(MultipartFile audioFile) throws IOException {
+    public TranscriptionResult transcribe(MultipartFile audioFile) throws IOException {
+        long startNs = System.nanoTime();
         MultipartBodyBuilder builder = new MultipartBodyBuilder();
 
         builder.part("file", new ByteArrayResource(audioFile.getBytes()) {
@@ -42,22 +47,27 @@ public class OpenAiAudioService {
                 .bodyToMono(Map.class)
                 .block();
 
-        return response != null ? (String) response.get("text") : "";
+        String text = response != null ? (String) response.get("text") : "";
+        long durationMs = (System.nanoTime() - startNs) / 1_000_000L;
+        return new TranscriptionResult(text, durationMs);
     }
 
-    public byte[] synthesize(String text) {
+    public SynthesisResult synthesize(String text) {
+        long startNs = System.nanoTime();
         Map<String, String> requestBody = Map.of(
                 "model", "tts-1",
                 "input", text,
                 "voice", "alloy"
         );
 
-        return webClient.post()
+        byte[] audioBytes = webClient.post()
                 .uri("/v1/audio/speech")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(requestBody)
                 .retrieve()
                 .bodyToMono(byte[].class)
                 .block();
+        long durationMs = (System.nanoTime() - startNs) / 1_000_000L;
+        return new SynthesisResult(audioBytes, durationMs);
     }
 }

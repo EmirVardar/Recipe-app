@@ -36,18 +36,22 @@ public class VoiceController {
             Authentication authentication,
             @RequestParam("file") MultipartFile file
     ) throws IOException {
+        long totalStartNs = System.nanoTime();
 
         // 1) Ses → metin
-        String userText = audioService.transcribe(file);
+        OpenAiAudioService.TranscriptionResult transcriptionResult = audioService.transcribe(file);
+        String userText = transcriptionResult.text();
 
         // 2) Metin → GPT cevap
+        long assistantStartNs = System.nanoTime();
         AssistantChatResponseDto chatResponse = assistantChatService.chat(
                 authentication.getName(), userText
         );
+        long assistantProcessingMs = (System.nanoTime() - assistantStartNs) / 1_000_000L;
 
         // 3) Cevap → ses
-        byte[] audioBytes = audioService.synthesize(chatResponse.answer());
-        String base64Audio = Base64.getEncoder().encodeToString(audioBytes);
+        OpenAiAudioService.SynthesisResult synthesisResult = audioService.synthesize(chatResponse.answer());
+        String base64Audio = Base64.getEncoder().encodeToString(synthesisResult.audioBytes());
 
         Map<String, Object> responseBody = new java.util.HashMap<>();
         responseBody.put("transcribedText", userText);
@@ -56,6 +60,13 @@ public class VoiceController {
         if (chatResponse.quickReplies() != null) {
             responseBody.put("quickReplies", chatResponse.quickReplies());
         }
+        System.out.println(
+                "PERF_VOICE_SUMMARY " +
+                "whisperMs=" + transcriptionResult.durationMs() +
+                " assistantProcessingMs=" + assistantProcessingMs +
+                " ttsMs=" + synthesisResult.durationMs() +
+                " totalMs=" + ((System.nanoTime() - totalStartNs) / 1_000_000L)
+        );
         return ResponseEntity.ok(responseBody);
     }
 }

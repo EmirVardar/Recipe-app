@@ -88,6 +88,13 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
 
     Optional<Recipe> findBySpoonacularId(Long spoonacularId);
 
+    @Query("""
+            select r from Recipe r
+            where lower(coalesce(r.titleTr, r.title)) = lower(:title)
+               or lower(r.title) = lower(:title)
+            """)
+    List<Recipe> findExactTitleMatches(@Param("title") String title);
+
     @Query("select r from Recipe r where r.titleTr is null")
     Page<Recipe> findAllWithoutTurkishTitle(Pageable pageable);
 

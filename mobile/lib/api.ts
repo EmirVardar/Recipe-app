@@ -151,6 +151,11 @@ export type RecipeDetailResponse = {
 export type AssistantChatResponse = {
   answer: string;
   quickReplies?: string[];
+  recipePreview?: {
+    id: number;
+    title: string;
+    image: string | null;
+  } | null;
 };
 
 export type AssistantVoiceResponse = {
@@ -299,14 +304,14 @@ export function getApiBaseUrl(): string {
     return 'http://10.0.2.2:8080';
   }
 
-  return 'http://172.16.1.34:8080';
+  return 'http://172.16.1.90:8080';
 }
 
 export function getMlServiceUrl(): string {
   if (Platform.OS === 'android') {
     return 'http://10.0.2.2:8001';
   }
-  return 'http://172.16.1.34:8001';
+  return 'http://172.16.1.90:8001';
 }
 
 export type FoodRecognitionResponse = {
@@ -567,6 +572,20 @@ export async function searchFoodProducts(
   return request<FoodProductSearchItemResponse[]>(`/api/foods?${params.toString()}`, {
     method: 'GET',
   });
+}
+
+export async function findBestFoodProductMatch(
+  query: string
+): Promise<FoodProductSearchItemResponse | null> {
+  const params = new URLSearchParams({
+    q: query,
+  });
+
+  const result = await request<FoodProductSearchItemResponse | undefined>(`/api/foods/best-match?${params.toString()}`, {
+    method: 'GET',
+  });
+
+  return result ?? null;
 }
 
 export async function getFridgeItems(accessToken: string): Promise<FridgeItemResponse[]> {

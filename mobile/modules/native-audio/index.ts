@@ -11,6 +11,7 @@ declare class NativeAudioModule extends NativeModule<NativeAudioEvents> {
   requestPermission(): Promise<boolean>;
   start(): Promise<boolean>;
   stop(): void;
+  activatePlaybackSession(): void;
   analyzeFile(uri: string, frameMs: number): Promise<number[]>;
 }
 

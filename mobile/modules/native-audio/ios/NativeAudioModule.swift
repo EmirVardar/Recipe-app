@@ -41,6 +41,14 @@ public class NativeAudioModule: Module {
       return true
     }
 
+    Function("activatePlaybackSession") {
+      do {
+        try self.configurePlaybackSession()
+      } catch {
+        self.sendEvent("onError", ["message": "Playback session activation failed: \(error.localizedDescription)"])
+      }
+    }
+
     Function("stop") {
       self.stopInternal()
       self.sendEvent("onState", ["state": "stopped"])
@@ -89,6 +97,17 @@ public class NativeAudioModule: Module {
     do {
       try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
     } catch {}
+  }
+
+  private func configurePlaybackSession() throws {
+    let session = AVAudioSession.sharedInstance()
+    try session.setCategory(
+      .playback,
+      mode: .default,
+      options: [.allowBluetooth, .allowAirPlay]
+    )
+    try session.overrideOutputAudioPort(.speaker)
+    try session.setActive(true, options: [])
   }
 
   private func handlePCM(buffer: AVAudioPCMBuffer) {
